@@ -122,9 +122,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // 3. Build magic link token
-  const payload = { community_id, member_id, exp: Math.floor(Date.now() / 1000) + (60 * 60) }; // Token valid for 1 hour
+  const payload = { sub: member_id, community_id, member_id, exp: Math.floor(Date.now() / 1000) + (60 * 60) }; // Token valid for 1 hour
   console.log('[MAGIC PAYLOAD KEYS]', Object.keys(payload));
-  const token = signToken(payload, WHOP_WEBHOOK_SECRET);
+  const token = signToken(payload, '1h');
   const hdrProto = (req.headers['x-forwarded-proto'] as string) || 'http';
   const hdrHost  = (req.headers.host as string) || 'localhost:3000';
   const envBase  = process.env.NEXT_PUBLIC_BASE_URL; // e.g. http://localhost:3000 in dev

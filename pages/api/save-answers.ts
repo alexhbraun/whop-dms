@@ -1,33 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
-import * as jwt from 'jsonwebtoken'
 import supabaseAdmin from '../../lib/supabaseAdmin'
-
-type TokenPayload = { community_id?: string; member_id?: string; exp?: number }
-
-function decodeToken(token: string | undefined): { ok: true; data: TokenPayload } | { ok: false; reason: string } {
-  if (!token || typeof token !== 'string') return { ok: false, reason: 'missing token' }
-  try {
-    const parts = token.split('.');
-
-    // support both formats
-    const payloadPart =
-      parts.length === 3 ? parts[1] :   // JWT style
-      parts.length === 2 ? parts[0] :   // Magic link style
-      null;
-
-    if (!payloadPart) return { ok: false, reason: 'unexpected token format' };
-
-    // base64url -> base64 + padding
-    const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
-    const pad = '='.repeat((4 - (b64.length % 4)) % 4);
-    const json = Buffer.from(b64 + pad, 'base64').toString('utf8');
-
-    const data = JSON.parse(json) as TokenPayload;
-    return { ok: true, data };
-  } catch (e: any) {
-    return { ok: false, reason: e?.message || 'decode error' };
-  }
-}
+import { verifyToken, type TokenPayload } from 'lib/token'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -35,28 +8,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { token, email, q1, q2, q3 } = (req.body ?? {}) as {
-      token?: string; email?: string; q1?: string; q2?: string; q3?: string
+    const { email, q1, q2, q3 } = (req.body ?? {}) as {
+      email?: string; q1?: string; q2?: string; q3?: string
     }
 
     console.log('[save-answers] raw body keys:', Object.keys(req.body || {}))
 
-    const dec = decodeToken(token)
-    if (!dec.ok) {
-      console.warn('[save-answers] token issue:', dec.reason)
-      return res.status(400).json({ error: 'bad token', reason: dec.reason })
+    const auth = req.headers.authorization ?? '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : (req.body?.token as string) || (req.query.token as string);
+
+    if (!token) {
+      console.warn('[save-answers] token issue: missing token')
+      return res.status(400).json({ error: 'bad token', reason: 'missing token' })
     }
 
-    const { community_id, member_id, exp } = dec.data!
-    console.log('[save-answers] decoded:', { community_id, member_id, exp })
+    let payload: TokenPayload;
+    try {
+      payload = verifyToken(token);
+    } catch (e: any) {
+      console.warn('[save-answers] token issue:', e?.message)
+      return res.status(400).json({ error: 'bad token', reason: e?.message || 'verify failed' })
+    }
 
-    if (!community_id || !member_id) {
-      return res.status(400).json({ error: 'token missing ids', keys: Object.keys(dec.data || {}) })
+    const { sub, community_id, member_id, exp } = payload
+    console.log('[save-answers] decoded:', { sub, community_id, member_id, exp })
+
+    const finalCommunityId = community_id ?? (payload as any).communityId;
+    const finalMemberId = member_id ?? (payload as any).memberId;
+
+    if (!finalCommunityId || !finalMemberId) {
+      return res.status(400).json({ error: 'token missing ids', keys: Object.keys(payload || {}) })
     }
 
     const answers = {
-      community_id,
-      member_id,
+      community_id: finalCommunityId,
+      member_id: finalMemberId,
       email: email ?? null,
       q1: q1 ?? null,
       q2: q2 ?? null,
