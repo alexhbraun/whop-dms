@@ -8,6 +8,7 @@ export interface TokenPayload {
 
 const SECRET = (process.env.WHOP_WEBHOOK_SECRET ?? 'dev-secret') as string;
 
+// url-safe base64
 const b64u = (buf: Buffer) =>
   buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '*').replace(/=+$/g, '');
 const unb64u = (str: string) =>
@@ -16,12 +17,19 @@ const unb64u = (str: string) =>
 const signHmac = (msg: string) =>
   b64u(crypto.createHmac('sha256', SECRET).update(msg).digest());
 
-export function signToken(payload: TokenPayload, expiresIn: string = '3600'): string {
-  const now = Math.floor(Date.now() / 1000);
-  const exp = now + (parseInt(expiresIn, 10) || 3600);
-  const header = { alg: 'HS256', typ: 'JWT' };
-  const data = { ...payload, exp };
+function msFromExpiresIn(expiresIn: string): number {
+  if (!expiresIn) return 3600_000;
+  const m = expiresIn.match(/^(\d+)([smhd])$/); // seconds/minutes/hours/days
+  if (!m) return Number(expiresIn) * 1000 || 3600_000;
+  const n = Number(m[1]);
+  return { s: n * 1000, m: n * 60_000, h: n * 3_600_000, d: n * 86_400_000 }[m[2] as 's'|'m'|'h'|'d'];
+}
 
+export function signToken(payload: TokenPayload, expiresIn: string = '1h'): string {
+  const now = Date.now();
+  const expMs = now + msFromExpiresIn(expiresIn);
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const data = { ...payload, exp: Math.floor(expMs / 1000) };
   const h = b64u(Buffer.from(JSON.stringify(header)));
   const p = b64u(Buffer.from(JSON.stringify(data)));
   const s = signHmac(`${h}.${p}`);

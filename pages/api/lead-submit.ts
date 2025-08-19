@@ -1,6 +1,12 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { verifyToken } from 'lib/token';
+import { verifyToken, TokenPayload } from 'lib/token';
 import { supabase } from '../../lib/supabaseServer';
+
+interface LeadPayload extends TokenPayload {
+  memberId: string;
+  communityId: string;
+  memberName?: string;
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -19,7 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ message: `Invalid or expired token: ${payload.reason}.` });
   }
 
-  const { memberId, communityId, memberName } = payload.data;
+  const { memberId, communityId, memberName } = (payload.data as LeadPayload);
 
   // Fetch member_name from Whop API if needed, or assume it's passed or stored elsewhere
   // For now, we'll use a placeholder or assume it's not strictly needed here for leads table

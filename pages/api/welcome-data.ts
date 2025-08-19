@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { verifyToken } from 'lib/token';
+import { verifyToken, TokenPayload } from 'lib/token';
 import { supabase } from '../../lib/supabaseServer';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -19,11 +19,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ message: `Invalid or expired token: ${payload.reason}.` });
   }
 
-  const communityId = (payload.data as any).community_id ?? (payload.data as any).communityId;
-  const memberId = (payload.data as any).member_id ?? (payload.data as any).memberId;
+  const communityId = (payload.data as TokenPayload).community_id ?? (payload.data as TokenPayload).communityId;
+  const memberId = (payload.data as TokenPayload).member_id ?? (payload.data as TokenPayload).memberId;
 
   if (!communityId || !memberId) {
-    return res.status(200).json({ ok: false, reason: 'missing ids', keys: Object.keys(payload.data) });
+    return res.status(200).json({ ok: false, reason: 'missing ids', keys: Object.keys(payload.data as TokenPayload) });
   }
 
   // Fetch questions from settings table based on communityId

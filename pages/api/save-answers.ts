@@ -4,7 +4,8 @@ import supabaseAdmin from '../../lib/supabaseAdmin'
 
 type TokenPayload = { community_id?: string; member_id?: string; exp?: number }
 
-function decodeToken(token: string): { ok: true; data: TokenPayload } | { ok: false; reason: string } {
+function decodeToken(token: string | undefined): { ok: true; data: TokenPayload } | { ok: false; reason: string } {
+  if (!token || typeof token !== 'string') return { ok: false, reason: 'missing token' }
   try {
     const parts = token.split('.');
 
