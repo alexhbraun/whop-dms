@@ -1,8 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { verifyToken } from '../../lib/token';
+import { verifyToken } from 'lib/token';
 import { supabase } from '../../lib/supabaseServer';
-
-const WHOP_WEBHOOK_SECRET = process.env.WHOP_WEBHOOK_SECRET || '';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
@@ -15,7 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ message: 'Token is required.' });
   }
 
-  const payload = verifyToken(token, WHOP_WEBHOOK_SECRET);
+  const payload = verifyToken(token);
 
   if (!payload.ok) {
     return res.status(401).json({ message: `Invalid or expired token: ${payload.reason}.` });
