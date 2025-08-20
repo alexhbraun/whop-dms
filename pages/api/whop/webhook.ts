@@ -1,6 +1,5 @@
 // /pages/api/whop/webhook.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
-// ⛏️ fix relative paths (this file is deeper)
 import { supabase } from '../../../lib/supabaseServer';
 import { verifyWhopSignature } from '../../../lib/whop';
 
