@@ -7,50 +7,64 @@ export async function readRawBody(req: NextApiRequest): Promise<string> {
   return buf.toString('utf8');
 }
 
-// rawBody must be the EXACT raw JSON string bytes
+function timingSafeEq(a: string, b: string): boolean {
+  try {
+    const A = Buffer.from(a, 'utf8');
+    const B = Buffer.from(b, 'utf8');
+    if (A.length !== B.length) return false;
+    return crypto.timingSafeEqual(A, B);
+  } catch { return false; }
+}
+
+function extractSignature(headerSig: string): string {
+  if (!headerSig) return '';
+  const s = headerSig.trim();
+
+  // 1) Comma-separated param list? e.g. "t=...,v1=abc" or "t=...,signature=abc"
+  if (s.includes(',')) {
+    const parts = s.split(',').map(p => p.trim());
+    const getVal = (key: string) => parts.find(p => p.startsWith(key + '='))?.split('=')[1] ?? '';
+    const fromV1  = getVal('v1');
+    const fromSig = getVal('signature') || getVal('sig');
+    if (fromV1)  return fromV1.trim();
+    if (fromSig) return fromSig.trim();
+    // Fallback: take last segment after '='
+    const last = parts[parts.length - 1];
+    if (last.includes('=')) return last.substring(last.indexOf('=') + 1).trim();
+  }
+
+  // 2) sha256=<hex>
+  if (s.startsWith('sha256=')) return s.slice(7).trim();
+
+  // 3) Otherwise, if it contains an '=', take the last chunk after '='
+  if (s.includes('=')) return s.substring(s.lastIndexOf('=') + 1).trim();
+
+  // 4) Raw signature value
+  return s;
+}
+
 export async function verifyWhopSignature(rawBody: string, headerSig: string, secret: string): Promise<boolean> {
   if (!secret || !headerSig) return false;
+  const received = extractSignature(headerSig);
 
-  const normalize = (s: string) => (s || '').trim();
-  const extract = (sig: string) => {
-    // Strip common prefixes or param lists: "sha256=abc", "t=...,v1=abc"
-    const val = sig.includes('v1=')
-      ? sig.split(',').map(p => p.trim()).find(p => p.startsWith('v1='))?.slice(3)
-      : sig.startsWith('sha256=') ? sig.slice(7) : sig;
-    return normalize(val || sig);
-  };
-
-  const received = extract(headerSig);
-
-  // Compute both hex and base64
-  const h = crypto.createHmac('sha256', secret).update(rawBody, 'utf8');
-  const expectHex = h.digest('hex'); // lowercase hex
-  const expectHexUpper = expectHex.toUpperCase();
+  // Compute expected digests
+  const hmac = crypto.createHmac('sha256', secret).update(rawBody, 'utf8');
+  const expectHex = hmac.digest('hex');              // lowercase hex
+  const expectHexUpper = expectHex.toUpperCase();    // uppercase hex
   const expectB64 = crypto.createHmac('sha256', secret).update(rawBody, 'utf8').digest('base64');
 
-  // Constant-time compare helpers
-  const safeEq = (a: string, b: string) => {
-    try {
-      const ba = Buffer.from(a);
-      const bb = Buffer.from(b);
-      if (ba.length !== bb.length) return false;
-      return crypto.timingSafeEqual(ba, bb);
-    } catch { return false; }
-  };
-
-  // Try exact hex, uppercase hex, or base64
-  if (safeEq(received, expectHex)) return true;
-  if (safeEq(received, expectHexUpper)) return true;
-  if (safeEq(received, expectB64)) return true;
+  if (timingSafeEq(received, expectHex)) return true;
+  if (timingSafeEq(received, expectHexUpper)) return true;
+  if (timingSafeEq(received, expectB64)) return true;
 
   // Last resort: if header had sha256= prefix and we didn't strip, try again
   if (headerSig.startsWith('sha256=')) {
     const alt = headerSig.slice(7);
-    if (safeEq(alt, expectHex) || safeEq(alt, expectHexUpper) || safeEq(alt, expectB64)) return true;
+    if (timingSafeEq(alt, expectHex) || timingSafeEq(alt, expectHexUpper) || timingSafeEq(alt, expectB64)) return true;
   }
 
   // Safe diagnostic (no secrets)
-  console.error('Webhook signature mismatch', {
+  console.error('Sig mismatch', {
     headerLen: received.length,
     headerPrefix: received.slice(0, 8),
     expectHexPrefix: expectHex.slice(0, 8),
