@@ -27,7 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // Get raw body for HMAC
-  const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {});
+  const rawBody = await readRaw(req);
 
   // Try common header names
   const headerSig =
@@ -37,8 +37,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     '';
 
   // Verify
-  const isValid = await verifyWhopSignature(rawBody, headerSig, secret);
-  if (!isValid) {
+  const ok = await verifyWhopSignature(rawBody, headerSig, secret);
+  if (!ok) {
     return res.status(401).json({ ok: false, error: 'invalid signature' });
   }
 

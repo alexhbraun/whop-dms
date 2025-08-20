@@ -1,31 +1,53 @@
 import crypto from 'crypto';
 
-/**
- * Verify Whop HMAC signature against the exact raw request body.
- * - signature header may be plain hex or "sha256=<hex>"
- * - returns true if valid, false otherwise
- */
-export function verifyWhopSignature(
-  rawBody: string,
-  signature: string | undefined,
-  secret: string
-): boolean {
-  if (!rawBody || !signature || !secret) return false;
+// rawBody must be the EXACT raw JSON string bytes
+export async function verifyWhopSignature(rawBody: string, headerSig: string, secret: string): Promise<boolean> {
+  if (!secret || !headerSig) return false;
 
-  const givenHex = signature.replace(/^sha256=/, '').toLowerCase();
+  const normalize = (s: string) => (s || '').trim();
+  const extract = (sig: string) => {
+    // Strip common prefixes or param lists: "sha256=abc", "t=...,v1=abc"
+    const val = sig.includes('v1=')
+      ? sig.split(',').map(p => p.trim()).find(p => p.startsWith('v1='))?.slice(3)
+      : sig.startsWith('sha256=') ? sig.slice(7) : sig;
+    return normalize(val || sig);
+  };
 
-  const expectedHex = crypto
-    .createHmac('sha256', secret)
-    .update(rawBody)
-    .digest('hex');
+  const received = extract(headerSig);
 
-  try {
-    // timing-safe compare
-    const a = Buffer.from(expectedHex, 'hex');
-    const b = Buffer.from(givenHex, 'hex');
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
-  } catch {
-    return false;
+  // Compute both hex and base64
+  const h = crypto.createHmac('sha256', secret).update(rawBody, 'utf8');
+  const expectHex = h.digest('hex'); // lowercase hex
+  const expectHexUpper = expectHex.toUpperCase();
+  const expectB64 = crypto.createHmac('sha256', secret).update(rawBody, 'utf8').digest('base64');
+
+  // Constant-time compare helpers
+  const safeEq = (a: string, b: string) => {
+    try {
+      const ba = Buffer.from(a);
+      const bb = Buffer.from(b);
+      if (ba.length !== bb.length) return false;
+      return crypto.timingSafeEqual(ba, bb);
+    } catch { return false; }
+  };
+
+  // Try exact hex, uppercase hex, or base64
+  if (safeEq(received, expectHex)) return true;
+  if (safeEq(received, expectHexUpper)) return true;
+  if (safeEq(received, expectB64)) return true;
+
+  // Last resort: if header had sha256= prefix and we didn't strip, try again
+  if (headerSig.startsWith('sha256=')) {
+    const alt = headerSig.slice(7);
+    if (safeEq(alt, expectHex) || safeEq(alt, expectHexUpper) || safeEq(alt, expectB64)) return true;
   }
+
+  // Safe diagnostic (no secrets)
+  console.error('Webhook signature mismatch', {
+    headerLen: received.length,
+    headerPrefix: received.slice(0, 8),
+    expectHexPrefix: expectHex.slice(0, 8),
+    expectB64Prefix: expectB64.slice(0, 8),
+  });
+  return false;
 }
