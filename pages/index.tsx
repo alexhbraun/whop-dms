@@ -1,16 +1,24 @@
-import * as React from "react";
+import Head from 'next/head';
 
-export default function Home() {
+export default function Landing() {
   return (
-    <div style={{padding: 24, fontFamily: "system-ui, Arial"}}>
-      <h1>Auto-DM / Lead Capture Bot</h1>
-      <p>Server is running on the pages router.</p>
-      <p>
-        Try visiting <code>/dashboard/settings</code>,{" "}
-        <code>/dashboard/leads</code> or post to{" "}
-        <code>/api/whop-webhook</code>.
-      </p>
-    </div>
+    <>
+      <Head><title>Whop DMS — Landing</title></Head>
+      <main style={{maxWidth: 960, margin: '40px auto', padding: 24, fontFamily:'Inter, system-ui'}}>
+        <h1 style={{marginBottom: 8}}>Whop DMS</h1>
+        <p style={{color:'#555', marginBottom: 24}}>
+          Capture leads, configure sua integração com o Whop e acompanhe resultados.
+        </p>
+        <div style={{display:'flex', gap:12, flexWrap:'wrap'}}>
+          <a href="/app" style={btn}>Ir para o App</a>
+          <a href="/whop/settings" style={btnSecondary}>Configurar</a>
+          <a href="/dashboard/leads" style={btnSecondary}>Ver Leads</a>
+        </div>
+      </main>
+    </>
   );
 }
+
+const btn: React.CSSProperties = { padding:'10px 16px', background:'#111827', color:'#fff', borderRadius:8, textDecoration:'none' };
+const btnSecondary: React.CSSProperties = { padding:'10px 16px', background:'#e5e7eb', color:'#111', borderRadius:8, textDecoration:'none' };
 
