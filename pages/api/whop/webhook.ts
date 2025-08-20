@@ -15,17 +15,38 @@ async function readRaw(req: NextApiRequest) {
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const secret = process.env.WHOP_SIGNING_SECRET || '';
-  const raw = await readRaw(req);
-  const sig = req.headers['x-whop-signature'] as string | undefined;
+  // Secret from env (allow either name)
+  const secret =
+    process.env.WHOP_WEBHOOK_SECRET ||
+    process.env.WHOP_SIGNING_SECRET ||
+    '';
 
-  // ✅ correct signature: (rawBody, signatureHeader, secret)
-  const ok = verifyWhopSignature(raw, sig, secret);
-  if (!ok) return res.status(401).json({ error: 'invalid signature' });
+  if (!secret) {
+    console.error('Webhook: no secret configured. Expected WHOP_WEBHOOK_SECRET or WHOP_SIGNING_SECRET');
+    return res.status(500).json({ ok: false, error: 'no webhook secret configured' });
+  }
+
+  // Get raw body for HMAC
+  const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {});
+
+  // Try common header names
+  const headerSig =
+    (req.headers['x-whop-signature'] as string) ||
+    (req.headers['whop-signature'] as string) ||
+    (req.headers['x-signature'] as string) ||
+    '';
+
+  // Verify
+  const verificationResult = await verifyWhopSignature(rawBody, headerSig, secret);
+  if (!verificationResult.ok) {
+    return res
+      .status(401)
+      .json({ ok: false, error: verificationResult.error || 'invalid signature' });
+  }
 
   // Parse verified payload
   let evt: any = {};
-  try { evt = JSON.parse(raw); } catch { return res.status(400).json({ error: 'invalid json' }); }
+  try { evt = JSON.parse(rawBody); } catch { return res.status(400).json({ error: 'invalid json' }); }
 
   const type = evt?.type as string | undefined;
   const community_id = evt?.data?.community_id ?? evt?.community_id ?? null;
