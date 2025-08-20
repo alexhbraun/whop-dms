@@ -48,20 +48,72 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   let evt: any = {};
   try { evt = JSON.parse(rawBody); } catch { return res.status(400).json({ error: 'invalid json' }); }
 
-  const type = evt?.type as string | undefined;
-  const community_id = evt?.data?.community_id ?? evt?.community_id ?? null;
+  // Event type: prefer `action`, then `type`, then `event`/`name`
+  const eventType =
+    (evt?.action as string) ||
+    (evt?.type as string) ||
+    (evt?.event as string) ||
+    (evt?.name as string) ||
+    'unknown';
 
-  // Log webhook
+  // Community ID from several possible spots
+  const communityId =
+    (evt as any)?.community_id ??
+    (evt as any)?.company_id ??
+    (evt as any)?.biz_id ??
+    (evt as any)?.business_id ??
+    (evt as any)?.data?.community_id ??
+    (evt as any)?.data?.company_id ??
+    (evt as any)?.membership?.company?.id ??
+    (evt as any)?.membership?.community?.id ??
+    null;
+
+  // Optional metadata
+  const creatorEmail =
+    (evt as any)?.creator_email ??
+    (evt as any)?.data?.creator_email ??
+    (evt as any)?.user?.email ??
+    null;
+
+  const plan =
+    (evt as any)?.plan ??
+    (evt as any)?.data?.plan ??
+    null;
+
+  // Log the event (store payload JSONB too)
   await supabase.from('webhook_events').insert({
-    event_type: type ?? 'unknown',
-    community_id,
+    event_type: eventType,
+    community_id: communityId,
     payload: evt,
   });
 
-  // Handle uninstall
-  if (type === 'app.uninstalled' && community_id) {
-    await supabase.from('installations').update({ active: false }).eq('community_id', community_id);
+  // Activate on install/membership valid IF we have a communityId
+  const activate = [
+    'app.installed',
+    'app_membership.went_valid',
+    'app_membership_went_valid',
+  ];
+  if (communityId && activate.includes(eventType)) {
+    await supabase.from('installations').upsert(
+      { community_id: communityId, creator_email: creatorEmail, plan, active: true },
+      { onConflict: 'community_id' }
+    );
   }
+
+  // Deactivate on uninstall/membership invalid IF we have a communityId
+  const deactivate = [
+    'app.uninstalled',
+    'app_membership.cancel_at_period_end_changed',
+    'app_membership_went_invalid',
+  ];
+  if (communityId && deactivate.includes(eventType)) {
+    await supabase.from('installations')
+      .update({ active: false })
+      .eq('community_id', communityId);
+  }
+
+  // optional: debug line (safe)
+  console.log('Webhook parsed', { eventType, hasCommunityId: !!communityId });
 
   return res.status(200).json({ ok: true });
 }
