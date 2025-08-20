@@ -1,4 +1,11 @@
 import crypto from 'crypto';
+import getRawBody from 'raw-body';
+import type { NextApiRequest } from 'next';
+
+export async function readRawBody(req: NextApiRequest): Promise<string> {
+  const buf = await getRawBody(req);
+  return buf.toString('utf8');
+}
 
 // rawBody must be the EXACT raw JSON string bytes
 export async function verifyWhopSignature(rawBody: string, headerSig: string, secret: string): Promise<boolean> {

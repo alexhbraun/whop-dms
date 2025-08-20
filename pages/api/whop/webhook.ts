@@ -1,16 +1,10 @@
 // /pages/api/whop/webhook.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { supabase } from '../../../lib/supabaseServer';
-import { verifyWhopSignature } from '../../../lib/whop';
+import { verifyWhopSignature, readRawBody } from '../../../lib/whop';
 
 // Needed to access raw body for HMAC
 export const config = { api: { bodyParser: false } };
-
-async function readRaw(req: NextApiRequest) {
-  const chunks: Uint8Array[] = [];
-  for await (const c of req) chunks.push(c);
-  return Buffer.concat(chunks).toString('utf8');
-}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -27,7 +21,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // Get raw body for HMAC
-  const rawBody = await readRaw(req);
+  const rawBody = await readRawBody(req);
 
   // Try common header names
   const headerSig =
@@ -39,7 +33,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // Verify
   const ok = await verifyWhopSignature(rawBody, headerSig, secret);
   if (!ok) {
-    return res.status(401).json({ ok: false, error: 'invalid signature' });
+    console.error('Webhook sig invalid', {
+      headerName: (req.headers['x-whop-signature'] && 'x-whop-signature') ||
+                  (req.headers['whop-signature'] && 'whop-signature') ||
+                  (req.headers['x-signature'] && 'x-signature') || 'none',
+      headerLen: (headerSig || '').length,
+      bodyLen: rawBody.length,
+      bodyPrefix: rawBody.slice(0, 30)
+    });
+    return res.status(401).json({ ok:false, error:'invalid signature' });
   }
 
   // Parse verified payload
