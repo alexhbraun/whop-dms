@@ -16,59 +16,54 @@ function timingSafeEq(a: string, b: string): boolean {
   } catch { return false; }
 }
 
-function extractSignature(headerSig: string): string {
-  if (!headerSig) return '';
-  const s = headerSig.trim();
-
-  // 1) Comma-separated param list? e.g. "t=...,v1=abc" or "t=...,signature=abc"
-  if (s.includes(',')) {
-    const parts = s.split(',').map(p => p.trim());
-    const getVal = (key: string) => parts.find(p => p.startsWith(key + '='))?.split('=')[1] ?? '';
-    const fromV1  = getVal('v1');
-    const fromSig = getVal('signature') || getVal('sig');
-    if (fromV1)  return fromV1.trim();
-    if (fromSig) return fromSig.trim();
-    // Fallback: take last segment after '='
-    const last = parts[parts.length - 1];
-    if (last.includes('=')) return last.substring(last.indexOf('=') + 1).trim();
+function parseSigHeader(headerSig: string): { raw: string; v1?: string; t?: string } {
+  const raw = (headerSig || '').trim();
+  const out: { raw: string; v1?: string; t?: string } = { raw };
+  if (!raw) return out;
+  const parts = raw.split(',').map(p => p.trim());
+  for (const p of parts) {
+    const [k, v] = p.split('=');
+    if (!k || v == null) continue;
+    if (k === 't') out.t = v.trim();
+    if (k === 'v1') out.v1 = v.trim();
+    if (k === 'signature' || k === 'sig') out.v1 = v.trim();
   }
+  if (!out.v1) {
+    // sha256=xxx or last chunk after '='
+    if (raw.startsWith('sha256=')) out.v1 = raw.slice(7).trim();
+    else if (raw.includes('=')) out.v1 = raw.substring(raw.lastIndexOf('=') + 1).trim();
+  }
+  return out;
+}
 
-  // 2) sha256=<hex>
-  if (s.startsWith('sha256=')) return s.slice(7).trim();
-
-  // 3) Otherwise, if it contains an '=', take the last chunk after '='
-  if (s.includes('=')) return s.substring(s.lastIndexOf('=') + 1).trim();
-
-  // 4) Raw signature value
-  return s;
+function computeDigests(secret: string, payload: string) {
+  const h = crypto.createHmac('sha256', secret).update(payload, 'utf8');
+  const hex = h.digest('hex');
+  const hexUp = hex.toUpperCase();
+  const b64 = crypto.createHmac('sha256', secret).update(payload, 'utf8').digest('base64');
+  return { hex, hexUp, b64 };
 }
 
 export async function verifyWhopSignature(rawBody: string, headerSig: string, secret: string): Promise<boolean> {
   if (!secret || !headerSig) return false;
-  const received = extractSignature(headerSig);
+  const { v1, t } = parseSigHeader(headerSig);
+  if (!v1) return false;
 
-  // Compute expected digests
-  const hmac = crypto.createHmac('sha256', secret).update(rawBody, 'utf8');
-  const expectHex = hmac.digest('hex');              // lowercase hex
-  const expectHexUpper = expectHex.toUpperCase();    // uppercase hex
-  const expectB64 = crypto.createHmac('sha256', secret).update(rawBody, 'utf8').digest('base64');
-
-  if (timingSafeEq(received, expectHex)) return true;
-  if (timingSafeEq(received, expectHexUpper)) return true;
-  if (timingSafeEq(received, expectB64)) return true;
-
-  // Last resort: if header had sha256= prefix and we didn't strip, try again
-  if (headerSig.startsWith('sha256=')) {
-    const alt = headerSig.slice(7);
-    if (timingSafeEq(alt, expectHex) || timingSafeEq(alt, expectHexUpper) || timingSafeEq(alt, expectB64)) return true;
+  // Try Stripe-style `${t}.${rawBody}` first if timestamp present
+  if (t) {
+    const tsPayload = `${t}.${rawBody}`;
+    const ts = computeDigests(secret, tsPayload);
+    if (timingSafeEq(v1, ts.hex) || timingSafeEq(v1, ts.hexUp) || timingSafeEq(v1, ts.b64)) return true;
   }
 
-  // Safe diagnostic (no secrets)
+  // Fallback: raw body only
+  const d = computeDigests(secret, rawBody);
+  if (timingSafeEq(v1, d.hex) || timingSafeEq(v1, d.hexUp) || timingSafeEq(v1, d.b64)) return true;
+
   console.error('Sig mismatch', {
-    headerLen: received.length,
-    headerPrefix: received.slice(0, 8),
-    expectHexPrefix: expectHex.slice(0, 8),
-    expectB64Prefix: expectB64.slice(0, 8),
+    hasT: !!t,
+    v1Len: v1.length,
+    v1Prefix: v1.slice(0, 8),
   });
   return false;
 }
