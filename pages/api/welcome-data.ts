@@ -7,23 +7,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
-  const { token } = req.query;
+  // Robust token extraction (works on Vercel + Node)
+  const rawAuth =
+    (Array.isArray(req.headers.authorization)
+      ? req.headers.authorization[0]
+      : req.headers.authorization) ||
+    (Array.isArray((req.headers as any)['x-authorization'])
+      ? (req.headers as any)['x-authorization'][0]
+      : (req.headers as any)['x-authorization']) ||
+    (typeof req.query.token === 'string' ? req.query.token : '') ||
+    (typeof (req.body as any)?.token === 'string' ? (req.body as any).token : '');
 
-  if (!token || typeof token !== 'string') {
-    return res.status(400).json({ message: 'Token is required.' });
+  const auth = typeof rawAuth === 'string' ? rawAuth : '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : auth;
+
+  if (!token) {
+    return res.status(400).json({ ok: false, error: 'no token' });
+  }
+  // --- end standard token extraction ---
+
+  const payloadResult = verifyToken(token);
+
+  if (!payloadResult.ok) {
+    return res.status(401).json({ message: `Invalid or expired token: ${payloadResult.reason}.` });
   }
 
-  const payload = verifyToken(token);
-
-  if (!payload.ok) {
-    return res.status(401).json({ message: `Invalid or expired token: ${payload.reason}.` });
-  }
-
-  const communityId = (payload.data as TokenPayload).community_id ?? (payload.data as TokenPayload).communityId;
-  const memberId = (payload.data as TokenPayload).member_id ?? (payload.data as TokenPayload).memberId;
+  const communityId = (payloadResult.data as TokenPayload).community_id ?? (payloadResult.data as TokenPayload).communityId;
+  const memberId = (payloadResult.data as TokenPayload).member_id ?? (payloadResult.data as TokenPayload).memberId;
 
   if (!communityId || !memberId) {
-    return res.status(200).json({ ok: false, reason: 'missing ids', keys: Object.keys(payload.data as TokenPayload) });
+    return res.status(200).json({ ok: false, reason: 'missing ids', keys: Object.keys(payloadResult.data as TokenPayload) });
   }
 
   // Fetch questions from settings table based on communityId

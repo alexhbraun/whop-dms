@@ -14,13 +14,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     console.log('[save-answers] raw body keys:', Object.keys(req.body || {}))
 
-    const auth = req.headers.authorization ?? '';
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : (req.body?.token as string) || (req.query.token as string);
+    // --- begin standard token extraction ---
+    const rawAuth =
+      (Array.isArray(req.headers.authorization)
+        ? req.headers.authorization[0]
+        : req.headers.authorization) ||
+      (Array.isArray((req.headers as any)['x-authorization'])
+        ? (req.headers as any)['x-authorization'][0]
+        : (req.headers as any)['x-authorization']) ||
+      (typeof req.query.token === 'string' ? req.query.token : '') ||
+      (typeof (req.body as any)?.token === 'string' ? (req.body as any).token : '');
+
+    const auth = typeof rawAuth === 'string' ? rawAuth : '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : auth;
 
     if (!token) {
-      console.warn('[save-answers] token issue: missing token')
-      return res.status(400).json({ error: 'bad token', reason: 'missing token' })
+      return res.status(400).json({ ok: false, error: 'no token' });
     }
+    // --- end standard token extraction ---
 
     let payload: TokenPayload;
     try {

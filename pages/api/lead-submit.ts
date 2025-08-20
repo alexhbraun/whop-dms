@@ -13,19 +13,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
-  const { token, email, q1_response, q2_response, q3_response } = req.body;
+  // Robust token extraction (works on Vercel + Node)
+  const rawAuth =
+    (Array.isArray(req.headers.authorization)
+      ? req.headers.authorization[0]
+      : req.headers.authorization) ||
+    (Array.isArray((req.headers as any)['x-authorization'])
+      ? (req.headers as any)['x-authorization'][0]
+      : (req.headers as any)['x-authorization']) ||
+    (typeof req.query.token === 'string' ? req.query.token : '') ||
+    (typeof (req.body as any)?.token === 'string' ? (req.body as any).token : '');
+
+  const auth = typeof rawAuth === 'string' ? rawAuth : '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : auth;
 
   if (!token) {
-    return res.status(400).json({ message: 'Token is required.' });
+    return res.status(400).json({ ok: false, error: 'no token' });
+  }
+  // --- end standard token extraction ---
+
+  const payloadResult = verifyToken(token);
+
+  if (!payloadResult.ok) {
+    return res.status(401).json({ message: `Invalid or expired token: ${payloadResult.reason}.` });
   }
 
-  const payload = verifyToken(token);
-
-  if (!payload.ok) {
-    return res.status(401).json({ message: `Invalid or expired token: ${payload.reason}.` });
-  }
-
-  const { memberId, communityId, memberName } = (payload.data as LeadPayload);
+  const { memberId, communityId, memberName } = (payloadResult.data as LeadPayload);
 
   // Fetch member_name from Whop API if needed, or assume it's passed or stored elsewhere
   // For now, we'll use a placeholder or assume it's not strictly needed here for leads table
