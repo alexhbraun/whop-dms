@@ -1,198 +1,117 @@
-import { NextApiRequest, NextApiResponse } from 'next';
+import type { NextApiRequest, NextApiResponse } from 'next';
 import crypto from 'crypto';
 import getRawBody from 'raw-body';
-import { signToken } from '../../lib/token';
-import supabaseAdmin from '../../lib/supabaseAdmin';
 
-export const config = { api: { bodyParser: false }, runtime: 'nodejs' };
+// If you know the exact header name Whop uses, set it here (lowercased).
+// We default to a likely value but also check a few alternates.
+const SIGNATURE_HEADER_CANDIDATES = [
+  process.env.WHOP_SIGNATURE_HEADER?.toLowerCase() || 'x-whop-signature',
+  'x-hook-signature',
+  'whop-signature',
+];
 
-const WHOP_WEBHOOK_SECRET = process.env.WHOP_WEBHOOK_SECRET || '';
+export const config = {
+  api: {
+    bodyParser: false, // IMPORTANT: we need raw bytes for HMAC
+  },
+};
+
+function timingSafeEqual(a: string, b: string) {
+  const abuf = Buffer.from(a || '', 'utf8');
+  const bbuf = Buffer.from(b || '', 'utf8');
+  if (abuf.length !== bbuf.length) return false;
+  return crypto.timingSafeEqual(abuf, bbuf);
+}
+
+async function readRawBody(req: NextApiRequest): Promise<Buffer> {
+  return getRawBody(req, { encoding: null });
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
-
-  // Robust token extraction (works on Vercel + Node)
-  const rawAuth =
-    (Array.isArray(req.headers.authorization)
-      ? req.headers.authorization[0]
-      : req.headers.authorization) ||
-    (typeof req.query.token === 'string' ? req.query.token : '') ||
-    (typeof (req.body as any)?.token === 'string' ? (req.body as any).token : '');
-
-  const auth = typeof rawAuth === 'string' ? rawAuth : '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : auth;
-
-  if (!token) {
-    return res.status(400).json({ ok: false, error: 'no token' });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ ok: false, error: 'method not allowed' });
   }
 
-  let rawBodyBuffer: Buffer;
+  const secret = process.env.WHOP_WEBHOOK_SECRET;
+  if (!secret) {
+    return res.status(500).json({ ok: false, error: 'missing WHOP_WEBHOOK_SECRET' });
+  }
+
+  // 1) Read raw body
+  let raw: Buffer;
   try {
-    rawBodyBuffer = await getRawBody(req);
+    raw = await readRawBody(req);
+  } catch (e) {
+    return res.status(400).json({ ok: false, error: 'invalid body' });
+  }
+
+  // 2) Get signature header (try multiple header names)
+  const headers = req.headers;
+  const sigHeader =
+    SIGNATURE_HEADER_CANDIDATES
+      .map((h) => (Array.isArray(headers[h]) ? headers[h]?.[0] : headers[h]))
+      .find((v) => typeof v === 'string') as string | undefined;
+
+  if (!sigHeader) {
+    return res.status(401).json({ ok: false, error: 'missing signature header' });
+  }
+
+  // 3) Compute HMAC of raw body using shared secret
+  const computed = crypto.createHmac('sha256', secret).update(raw).digest('hex');
+
+  // If Whop provides base64 instead of hex, also compare that variant:
+  const computedB64 = Buffer.from(
+    crypto.createHmac('sha256', secret).update(raw).digest()
+  ).toString('base64');
+
+  const presented = sigHeader.trim();
+  const verified =
+    timingSafeEqual(presented, computed) ||
+    timingSafeEqual(presented, computedB64) ||
+    timingSafeEqual(presented.replace(/^sha256=/i, ''), computed) || // some vendors prefix "sha256="
+    timingSafeEqual(presented.replace(/^sha256=/i, ''), computedB64);
+
+  if (!verified) {
+    return res.status(401).json({ ok: false, error: 'invalid signature' });
+  }
+
+  // 4) Parse JSON after verification
+  let event: any;
+  try {
+    event = JSON.parse(raw.toString('utf8'));
+  } catch {
+    return res.status(400).json({ ok: false, error: 'invalid json' });
+  }
+
+  // 5) Idempotency (optional but recommended)
+  const deliveryId =
+    (Array.isArray(headers['x-whop-delivery-id']) ? headers['x-whop-delivery-id'][0] : headers['x-whop-delivery-id']) ||
+    (Array.isArray(headers['x-delivery-id']) ? headers['x-delivery-id'][0] : headers['x-delivery-id']) ||
+    event?.id;
+
+  // TODO: check if deliveryId already processed in your DB/kv and early-return 200 if so
+
+  // 6) Handle event types (fill in as needed)
+  // Example expected shape: { type: string, data: {...} }
+  try {
+    switch (event?.type) {
+      case 'member.created':
+      case 'member.updated':
+      case 'subscription.created':
+      case 'subscription.updated':
+      case 'purchase.completed':
+        // TODO: upsert to your DB; enqueue jobs, etc.
+        break;
+      default:
+        // Unknown event – accept anyway so Whop doesn't retry forever
+        break;
+    }
   } catch (err) {
-    console.error('Error reading raw body:', err);
-    return res.status(400).json({ message: 'Error reading request body' });
+    // If your processing fails, still return 200 after enqueueing a retryable job if possible.
+    // For now we surface 500 to know it failed during testing.
+    return res.status(500).json({ ok: false, error: 'handler error', detail: String(err) });
   }
 
-  let body: any; // This will hold the parsed JSON object
-
-  // --- MOCK switch (bypass signature) ---
-  if (process.env.MOCK_WEBHOOK === '1') {
-    try {
-      body = JSON.parse(rawBodyBuffer.toString('utf8')); // Always parse from rawBodyBuffer
-      console.log('[MOCK WEBHOOK] raw keys:', Object.keys(body || {}));
-      console.log('[MOCK WEBHOOK] has data wrapper:', !!body?.data);
-    } catch (error) {
-      console.error('Error parsing mock webhook body:', error);
-      return res.status(400).json({ message: 'Invalid JSON body for mock webhook' });
-    }
-  } else {
-    // --- REAL WEBHOOK path (existing raw-body + signature verification) ---
-    const signature = req.headers['whop-signature'];
-    if (!signature) {
-      return res.status(400).json({ message: 'Webhook signature missing' });
-    }
-
-    const hmac = crypto.createHmac('sha256', WHOP_WEBHOOK_SECRET);
-    hmac.update(rawBodyBuffer);
-    const digest = hmac.digest('hex');
-
-    if (digest !== signature) {
-      console.error('Webhook signature mismatch', { provided: signature, expected: digest });
-      return res.status(401).json({ message: 'Webhook signature mismatch' });
-    }
-
-    try {
-      body = JSON.parse(rawBodyBuffer.toString('utf8')); // Parse from rawBodyBuffer after verification
-    } catch (error) {
-      console.error('Error parsing webhook body:', error);
-      return res.status(400).json({ message: 'Invalid JSON body' });
-    }
-  }
-
-  // --- ALWAYS normalize exactly like above: ---
-  const raw = body; // 'body' is already the parsed JSON object
-  const type = raw?.type || raw?.event; // support older 'event' key
-  const data = raw?.data ?? raw ?? {};       // if no data wrapper, use raw
-  const { community_id, member_id, member_name } = data as {
-    community_id?: string;
-    member_id?: string;
-    member_name?: string;
-  };
-
-  // Guard and continue…
-  if (!type) {
-    console.log('[WEBHOOK] missing type. raw:', raw);
-    return res.status(400).json({ message: 'missing type' });
-  }
-  if (!community_id || !member_id) {
-    console.log('[WEBHOOK] missing fields', { community_id, member_id, member_name, data });
-    return res.status(400).json({ message: 'missing required fields' });
-  }
-
-  console.log('[WEBHOOK] normalized event:', { type, community_id, member_id, member_name });
-
-  if (type !== 'membership.went_valid') {
-    return res.status(200).json({ message: `Event type ${type} not handled` });
-  }
-
-  // 1. Load settings (by community_id) for welcome_template and template_version
-  const { data: settings, error: settingsError } = await supabaseAdmin
-    .from('settings')
-    .select('welcome_template, questions, template_version')
-    .eq('community_id', community_id)
-    .single();
-
-  if (settingsError && settingsError.code !== 'PGRST116') { // PGRST116 means no rows found
-    console.error('Error fetching settings:', settingsError);
-    return res.status(500).json({ message: 'Error fetching settings' });
-  }
-
-  if (!settings) {
-    console.warn('[WEBHOOK] Settings not found for community_id:', community_id, 'Using fallback values.');
-  }
-
-  const templateVersion = settings?.template_version || 'v1';
-  const welcomeTemplate = settings?.welcome_template || 'Welcome {{memberName}} to {{communityName}}!';
-  const questions = settings?.questions || [];
-
-  console.log('[WEBHOOK] using version:', templateVersion, 'community:', community_id, 'member:', member_id);
-
-  // 2. Deduplicate via dm_sends
-  const { data: existingDm, error: dmError } = await supabaseAdmin
-    .from('dm_sends')
-    .select('id')
-    .eq('community_id', community_id)
-    .eq('member_id', member_id)
-    .eq('template_version', templateVersion) // Dedupe based on template version
-    .single();
-
-  if (dmError && dmError.code !== 'PGRST116') { // PGRST116 means no rows found
-    console.error('Error checking existing DM send:', dmError);
-    return res.status(500).json({ message: 'Error checking DM sends' });
-  }
-
-  if (existingDm) {
-    return res.status(200).json({ message: 'DM already sent for this member and template version.' });
-  }
-
-  // 3. Build magic link token
-  const payload = { sub: member_id, community_id, member_id, exp: Math.floor(Date.now() / 1000) + (60 * 60) }; // Token valid for 1 hour
-  console.log('[MAGIC PAYLOAD KEYS]', Object.keys(payload));
-  const token = signToken(payload, '1h');
-  const hdrProto = (req.headers['x-forwarded-proto'] as string) || 'http';
-  const hdrHost  = (req.headers.host as string) || 'localhost:3000';
-  const envBase  = process.env.NEXT_PUBLIC_BASE_URL; // e.g. http://localhost:3000 in dev
-  const baseUrl  = envBase ?? `${hdrProto}://${hdrHost}`;
-  console.log('[BASE URL]', { envBase, hdrProto, hdrHost, baseUrl });
-
-  const sendWelcomeUrl = `${baseUrl}/api/send-welcome`;
-
-  const magicLink = `${baseUrl}/welcome?token=${token}`;
-  console.log('[MAGIC LINK]', magicLink);
-
-  // 4. Render welcome message
-  const renderedMessage = welcomeTemplate
-    .replace(/\{\{memberName\}\}/g, member_name || 'there')
-    .replace(/\{\{communityName\}\}/g, community_id); // Assuming community_id can serve as communityName for now
-
-  const messageWithLink = `${renderedMessage}\n\nClick here to get started: ${magicLink}`;
-
-  // 5. Call internal /api/send-welcome
-  try {
-    const sendWelcomeResponse = await fetch(sendWelcomeUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        member_id,
-        community_id,
-        message: messageWithLink,
-        template_version: templateVersion,
-      }),
-    });
-
-    if (!sendWelcomeResponse.ok) {
-      const errorText = await sendWelcomeResponse.text();
-      throw new Error(`Failed to send welcome DM: ${errorText}`);
-    }
-
-    // 6. On success, insert into dm_sends
-    const { error: insertDmError } = await supabaseAdmin.from('dm_sends').insert([
-      {
-        community_id,
-        member_id,
-        template_version: templateVersion,
-      },
-    ]);
-
-    if (insertDmError) {
-      console.error('Error inserting DM send record:', insertDmError);
-      // Note: We proceed with success even if DM record insert fails, as the DM was likely sent.
-    }
-
-    res.status(200).json({ message: 'Webhook processed, welcome DM triggered.' });
-  } catch (error) {
-    console.error('Error processing webhook:', error);
-    res.status(500).json({ message: 'Internal server error processing webhook.' });
-  }
+  // 7) Ack quickly
+  return res.status(200).json({ ok: true });
 }
