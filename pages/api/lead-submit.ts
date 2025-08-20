@@ -61,10 +61,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       community_id: communityId,
       member_id: memberId,
       member_name: memberName ?? null,
-      email: email ?? null,
-      q1_response: q1_response ?? null,
-      q2_response: q2_response ?? null,
-      q3_response: q3_response ?? null,
     });
 
     if (insertError) {
