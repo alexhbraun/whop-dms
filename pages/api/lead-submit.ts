@@ -42,15 +42,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ message: `Invalid or expired token: ${payloadResult.reason}.` });
   }
 
-  const {
-    memberId,
-    communityId,
-    memberName,
-    email,
-    q1_response,
-    q2_response,
-    q3_response,
-  } = (payloadResult.data ?? {}) as LeadPayload;
+  const { memberId, communityId, memberName } = (payloadResult.data ?? {}) as LeadPayload;
+
+  const data = (payloadResult.data ?? {}) as {
+    email?: string;
+    q1_response?: string;
+    q2_response?: string;
+    q3_response?: string;
+  };
+
+  const email = data.email;
+  const q1_response = data.q1_response;
+  const q2_response = data.q2_response;
+  const q3_response = data.q3_response;
 
   try {
     const { data: leadsData, error: insertError } = await supabase.from('leads').insert({
