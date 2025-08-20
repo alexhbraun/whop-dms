@@ -10,6 +10,9 @@ const SIGNATURE_HEADER_CANDIDATES = [
   'whop-signature',
 ];
 
+// If set to '1', log signature header and computed digest on each request (do NOT leave on in prod long-term).
+const DEBUG = process.env.WHOP_WEBHOOK_DEBUG === '1';
+
 export const config = {
   api: {
     bodyParser: false, // IMPORTANT: we need raw bytes for HMAC
@@ -71,6 +74,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     timingSafeEqual(presented.replace(/^sha256=/i, ''), computed) || // some vendors prefix "sha256="
     timingSafeEqual(presented.replace(/^sha256=/i, ''), computedB64);
 
+  if (DEBUG) {
+    console.log('WHOP webhook debug', {
+      sigHeader,
+      computedHex: computed,
+      computedB64,
+      rawLen: raw.length
+    });
+  }
+
   if (!verified) {
     return res.status(401).json({ ok: false, error: 'invalid signature' });
   }
@@ -81,6 +93,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     event = JSON.parse(raw.toString('utf8'));
   } catch {
     return res.status(400).json({ ok: false, error: 'invalid json' });
+  }
+
+  const evtType =
+    (typeof event?.type === 'string' && event.type) ||
+    (typeof event?.event === 'string' && event.event) ||
+    (typeof event?.action === 'string' && event.action) ||
+    (typeof event?.name === 'string' && event.name) ||
+    '';
+
+  if (!evtType) {
+    // Optional debug logging
+    if (process.env.WHOP_WEBHOOK_DEBUG === '1') {
+      console.log('Webhook payload missing type', { keys: Object.keys(event || {}), sample: event });
+    }
+    return res.status(400).json({ message: 'missing type' });
   }
 
   // 5) Idempotency (optional but recommended)
@@ -94,7 +121,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // 6) Handle event types (fill in as needed)
   // Example expected shape: { type: string, data: {...} }
   try {
-    switch (event?.type) {
+    switch (evtType) {
+      case 'app_membership_went_valid':
       case 'member.created':
       case 'member.updated':
       case 'subscription.created':
@@ -103,7 +131,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // TODO: upsert to your DB; enqueue jobs, etc.
         break;
       default:
-        // Unknown event – accept anyway so Whop doesn't retry forever
+        // Unknown event — accept to prevent endless retries (adjust as desired)
         break;
     }
   } catch (err) {
