@@ -37,11 +37,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     '';
 
   // Verify
-  const verificationResult = await verifyWhopSignature(rawBody, headerSig, secret);
-  if (!verificationResult.ok) {
-    return res
-      .status(401)
-      .json({ ok: false, error: verificationResult.error || 'invalid signature' });
+  const isValid = await verifyWhopSignature(rawBody, headerSig, secret);
+  if (!isValid) {
+    return res.status(401).json({ ok: false, error: 'invalid signature' });
   }
 
   // Parse verified payload
