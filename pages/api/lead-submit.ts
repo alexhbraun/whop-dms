@@ -6,6 +6,10 @@ interface LeadPayload extends TokenPayload {
   memberId: string;
   communityId: string;
   memberName?: string;
+  email?: string;
+  q1_response?: string;
+  q2_response?: string;
+  q3_response?: string;
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -38,21 +42,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ message: `Invalid or expired token: ${payloadResult.reason}.` });
   }
 
-  const { memberId, communityId, memberName } = (payloadResult.data as LeadPayload);
-
-  // Fetch member_name from Whop API if needed, or assume it's passed or stored elsewhere
-  // For now, we'll use a placeholder or assume it's not strictly needed here for leads table
-  // let memberName = null; // Can be fetched later or passed via token if needed
+  const {
+    memberId,
+    communityId,
+    memberName,
+    email,
+    q1_response,
+    q2_response,
+    q3_response,
+  } = (payloadResult.data ?? {}) as LeadPayload;
 
   try {
     const { data: leadsData, error: insertError } = await supabase.from('leads').insert({
       community_id: communityId,
       member_id: memberId,
-      member_name: memberName, // Placeholder
-      email,
-      q1_response,
-      q2_response,
-      q3_response,
+      member_name: memberName ?? null,
+      email: email ?? null,
+      q1_response: q1_response ?? null,
+      q2_response: q2_response ?? null,
+      q3_response: q3_response ?? null,
     });
 
     if (insertError) {
