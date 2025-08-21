@@ -1,164 +1,50 @@
 // pages/api/whop/install.ts
-import type { NextApiRequest, NextApiResponse } from 'next';
-import { supabase } from '../../../lib/supabaseServer';
-
-// Helper: obtain redirect_uri exactly like registered on Whop
-function getRedirectUri(req: NextApiRequest) {
-  const base = process.env.APP_BASE_URL || `https://${req.headers.host}`;
-  return `${base.replace(/\/$/, '')}/api/whop/install`;
-}
+import type { NextApiRequest, NextApiResponse } from "next";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  console.log('[whop/install] HIT', { method: req.method, q: req.query, ua: req.headers['user-agent'] });
-
-  const startedAt = new Date().toISOString();
-  const safeQuery =
-    req && typeof req.query === 'object'
-      ? Object.fromEntries(
-          Object.entries(req.query).map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : String(v)])
-        )
-      : {};
-  console.log('[whop/install] PARAMS', {
-    hasCode: typeof (req.query as any)?.code === 'string' || typeof (req.body as any)?.code === 'string',
-    hasState: typeof (req.query as any)?.state === 'string' || typeof (req.body as any)?.state === 'string',
-  });
-
   try {
-    if (req.method !== 'GET' && req.method !== 'POST') {
-      return res.status(405).json({ error: 'Method not allowed' });
+    const { method, url, query, headers } = req;
+    const code = typeof query.code === "string" ? query.code : undefined;
+    const biz = typeof query.biz === "string" ? query.biz : undefined;
+    const state = typeof query.state === "string" ? query.state : undefined;
+
+    console.log("WHOP_INSTALL start", {
+      method, url, query,
+      hdr: {
+        ua: headers["user-agent"],
+        xfhost: headers["x-forwarded-host"],
+        xfproto: headers["x-forwarded-proto"],
+        vercel: headers["x-vercel-deployment-url"],
+      },
+    });
+
+    if (query.debug === "1") {
+      return res.status(200).json({
+        ok: true,
+        message: "Debug echo for /api/whop/install",
+        sawCode: !!code,
+        sawBiz: !!biz,
+        query,
+        headers: {
+          "user-agent": headers["user-agent"],
+          "x-forwarded-host": headers["x-forwarded-host"],
+          "x-forwarded-proto": headers["x-forwarded-proto"],
+          "x-vercel-deployment-url": headers["x-vercel-deployment-url"],
+        },
+      });
     }
-
-    const code =
-      (typeof req.query.code === 'string' && req.query.code) ||
-      (typeof (req.body as any)?.code === 'string' && (req.body as any).code) ||
-      '';
-
-    const state =
-      (typeof req.query.state === 'string' && req.query.state) ||
-      (typeof (req.body as any)?.state === 'string' && (req.body as any).state) ||
-      undefined;
 
     if (!code) {
-      console.log('[whop/install] missing code/state', { code, state });
-      return res.status(400).json({ error: 'Missing code' });
+      return res.status(400).json({
+        error: "Missing code",
+        hint: "This endpoint must be called by Whop after the install auth step with ?code=...&biz=...",
+      });
     }
 
-    const client_id = process.env.WHOP_CLIENT_ID || process.env.WHOP_APP_ID || '';
-    const client_secret = process.env.WHOP_CLIENT_SECRET || '';
-    const apiBase = (process.env.WHOP_API_BASE || 'https://api.whop.com').replace(/\/$/, '');
-    const redirect_uri = getRedirectUri(req);
-
-    if (!client_id || !client_secret) {
-      return res.status(500).json({ error: 'Missing WHOP client credentials on server' });
-    }
-
-    // Exchange authorization code for token
-    console.log('[whop/install] EXCHANGE_START');
-    const tokenResp = await fetch(`${apiBase}/oauth/token`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        client_id,
-        client_secret,
-        code,
-        grant_type: 'authorization_code',
-        redirect_uri,
-      }),
-    });
-
-    console.log('[whop/install] EXCHANGE_RESP', { status: tokenResp.status });
-    if (!tokenResp.ok) {
-      const text = await tokenResp.text().catch(() => '<no-text>');
-      console.error('[whop/install] token exchange failed', { status: tokenResp.status, text });
-      return res.status(400).json({ ok: false, error: 'oauth exchange failed', status: tokenResp.status });
-    }
-
-    const tok: any = await tokenResp.json();
-
-    const redact = (s?: string) => (typeof s === 'string' ? s.slice(0, 2) + '...' + s.slice(-4) : null);
-    console.log('[whop/install] EXCHANGE_OK', {
-      access_token: redact(tok?.access_token),
-      refresh_token: redact(tok?.refresh_token),
-      token_type: tok?.token_type || null,
-      expires_in: tok?.expires_in ?? null,
-    });
-
-    // Try to extract identifiers Whop may provide (names can vary)
-    const community_id =
-      tok.community_id ??
-      tok.company_id ??
-      tok.biz_id ??
-      tok.business_id ??
-      tok.data?.community_id ??
-      tok.data?.company_id;
-
-    const creator_email =
-      tok.creator_email ?? tok.user?.email ?? tok.email ?? tok.data?.creator_email ?? null;
-
-    const plan = tok.plan ?? tok.tier ?? tok.data?.plan ?? null;
-
-    // Compute expiry (if provided)
-    const expires_at =
-      typeof tok.expires_in === 'number'
-        ? new Date(Date.now() + tok.expires_in * 1000).toISOString()
-        : null;
-
-    // Persist installation. We only write columns that surely exist in your schema.
-    // Tokens vão dentro de settings.auth (JSONB) para não quebrar o schema.
-    const settingsPatch = {
-      auth: {
-        access_token: tok.access_token ?? null,
-        refresh_token: tok.refresh_token ?? null,
-        token_type: tok.token_type ?? null,
-        scope: tok.scope ?? null,
-        expires_at,
-        state: state ?? null,
-      },
-    };
-
-    console.log('[whop/install] UPSERT_START', { community_id, creator_email, plan });
-    let upsertError: any = null;
-    if (!community_id) {
-      // Sem ID ainda? Crie um registro "parcial" e os webhooks completarão depois.
-      // Usamos uma chave derivada para não bloquear o fluxo.
-      const tempId = `pending_${Date.now()}`;
-      const { error } = await supabase.from('installations').upsert(
-        {
-          community_id: tempId,
-          creator_email,
-          plan,
-          active: true,
-          settings: settingsPatch,
-        },
-        { onConflict: 'community_id' }
-      );
-      upsertError = error;
-      console.warn('OAuth install without community_id; saved as temp row', tempId);
-    } else {
-      const { error } = await supabase.from('installations').upsert(
-        {
-          community_id,
-          creator_email,
-          plan,
-          active: true,
-          settings: settingsPatch,
-        },
-        { onConflict: 'community_id' }
-      );
-      upsertError = error;
-    }
-
-    if (upsertError) {
-      console.error('[whop/install] UPSERT_FAIL', { error: upsertError });
-    } else {
-      console.log('[whop/install] upsert ok', { community_id, creator_email });
-    }
-
-    // UX: manda o criador pro painel do app
-    console.log('[whop/install] redirecting', { to: '/app' });
-    res.redirect(302, '/app');
-  } catch (e: any) {
-    console.error('[whop/install] ERROR', e);
-    return res.status(500).json({ ok: false, error: 'install handler crashed' });
+    console.log("WHOP_INSTALL success-path", { code, biz, state });
+    return res.status(200).json({ ok: true, received: { code, biz, state } });
+  } catch (err) {
+    console.error("WHOP_INSTALL error", err);
+    return res.status(500).json({ error: "Internal error" });
   }
 }
