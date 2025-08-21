@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
     "env:node": "node -r dotenv/config scripts/env-check.js",
     "mint:token": "ts-node scripts/mint-token.ts",
     "postinstall": ""

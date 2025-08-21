@@ -1,81 +1,32 @@
-import type { NextApiRequest, NextApiResponse } from 'next'
-import { supabaseAdmin } from '../../lib/supabaseAdmin'
-import { verifyToken, type TokenPayload } from 'lib/token'
+import type { NextApiRequest, NextApiResponse } from 'next';
+import { supabaseAdmin } from '../../lib/supabaseAdmin';
+import { whopConfig } from '../../lib/whopConfig';
+import { verifyToken, type TokenPayload } from 'lib/token';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'method not allowed' })
-  }
+  if (req.method !== 'POST') return res.status(405).end();
 
-  try {
-    const { email, q1, q2, q3 } = (req.body ?? {}) as {
-      email?: string; q1?: string; q2?: string; q3?: string
-    }
+  // get bearer token from header or cookie
+  const auth = req.headers.authorization ?? '';
+  const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  const cookieToken = (req.cookies && (req.cookies['token'] || req.cookies['x-token'])) || '';
+  const token = bearer || cookieToken;
 
-    console.log('[save-answers] raw body keys:', Object.keys(req.body || {}))
+  // now verify using the token string
+  const payload = (await verifyToken(token)) as TokenPayload | null;
+  if (!payload) return res.status(401).json({ ok: false, error: 'unauthorized' });
 
-    // --- begin standard token extraction ---
-    const rawAuth =
-      (Array.isArray(req.headers.authorization)
-        ? req.headers.authorization[0]
-        : req.headers.authorization) ||
-      (Array.isArray((req.headers as any)['x-authorization'])
-        ? (req.headers as any)['x-authorization'][0]
-        : (req.headers as any)['x-authorization']) ||
-      (typeof req.query.token === 'string' ? req.query.token : '') ||
-      (typeof (req.body as any)?.token === 'string' ? (req.body as any).token : '');
+  const { memberId, answers } = req.body ?? {};
+  if (!memberId || !Array.isArray(answers)) return res.status(400).json({ ok: false, error: 'bad input' });
 
-    const auth = typeof rawAuth === 'string' ? rawAuth : '';
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : auth;
+  const { error } = await supabaseAdmin.from('answers').insert({
+    member_id: memberId,
+    answers,
+    biz_id: payload.bizId ?? null,
+  });
 
-    if (!token) {
-      return res.status(400).json({ ok: false, error: 'no token' });
-    }
-    // --- end standard token extraction ---
+  if (error) return res.status(500).json({ ok: false, error: error.message });
 
-    let payload: TokenPayload;
-    try {
-      payload = verifyToken(token);
-    } catch (e: any) {
-      console.warn('[save-answers] token issue:', e?.message)
-      return res.status(400).json({ error: 'bad token', reason: e?.message || 'verify failed' })
-    }
-
-    const { sub, community_id, member_id, exp } = payload
-    console.log('[save-answers] decoded:', { sub, community_id, member_id, exp })
-
-    const finalCommunityId = community_id ?? (payload as any).communityId;
-    const finalMemberId = member_id ?? (payload as any).memberId;
-
-    if (!finalCommunityId || !finalMemberId) {
-      return res.status(400).json({ error: 'token missing ids', keys: Object.keys(payload || {}) })
-    }
-
-    const answers = {
-      community_id: finalCommunityId,
-      member_id: finalMemberId,
-      email: email ?? null,
-      q1: q1 ?? null,
-      q2: q2 ?? null,
-      q3: q3 ?? null,
-      meta: { via: 'welcome', ts: Date.now() }
-    }
-
-    console.log('[save-answers] inserting:', answers)
-
-    const { error } = await supabaseAdmin
-      .from('onboarding_answers')
-      .insert(answers)
-
-    if (error) {
-      console.error('[save-answers] supabase error:', error)
-      return res.status(400).json({ error: 'db insert failed', detail: error.message, code: (error as any).code })
-    }
-
-    return res.status(200).json({ ok: true })
-  } catch (err: any) {
-    console.error('[save-answers] unhandled:', err)
-    return res.status(500).json({ error: 'server error', detail: err?.message || String(err) })
-  }
+  return res.status(200).json({ ok: true, base: whopConfig.APP_BASE_URL });
 }
 

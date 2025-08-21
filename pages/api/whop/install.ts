@@ -1,8 +1,9 @@
 // pages/api/whop/install.ts
+
 import type { NextApiRequest, NextApiResponse } from "next";
-import { WHOP_API_BASE, APP_BASE_URL } from "../../lib/whopConfig";
-import { logEvent } from "../../lib/log";
-import { supabaseAdmin } from "../../lib/supabaseAdmin";
+import { whopConfig, logWhopConfigSummary } from "../../../lib/whopConfig";
+import { logEvent } from "../../../lib/log";
+import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 
 const log = (...args: any[]) => {
   try {
@@ -46,15 +47,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     // 1) Exchange `code` → tokens
-    const client_id = process.env.WHOP_CLIENT_ID;
-    const client_secret = process.env.WHOP_CLIENT_SECRET;
+    const client_id = whopConfig.WHOP_CLIENT_ID;
+    const client_secret = whopConfig.WHOP_CLIENT_SECRET;
 
     if (!client_id || !client_secret) {
-      logEvent("/api/whop/install", "error", "env-vars-missing", { code, client_id: !!client_id, client_secret: !!client_secret });
+      // logEvent("/api/whop/install", "error", "env-vars-missing", { code, client_id: !!client_id, client_secret: !!client_secret });
       return res.status(500).json({ error: "Server missing WHOP_CLIENT_ID or WHOP_CLIENT_SECRET" });
     }
 
-    const tokenResponse = await fetch(`${WHOP_API_BASE}/oauth/token`, {
+    const tokenResponse = await fetch(`${whopConfig.WHOP_API_BASE}/oauth/token`, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -62,7 +63,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       body: new URLSearchParams({
         grant_type: "authorization_code",
         code: code,
-        redirect_uri: `${APP_BASE_URL}/api/whop/install`,
+        redirect_uri: `${whopConfig.APP_BASE_URL}/api/whop/install`,
         client_id: client_id,
         client_secret: client_secret,
       }).toString(),
@@ -71,7 +72,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const tokenData = await tokenResponse.json();
 
     if (!tokenResponse.ok) {
-      logEvent("/api/whop/install", "error", "oauth-exchange-failed", { code, tokenData });
+      // logEvent("/api/whop/install", "error", "oauth-exchange-failed", { code, tokenData });
       return res.status(tokenResponse.status).json({ error: "Failed to exchange code for tokens", details: tokenData });
     }
 
@@ -83,7 +84,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // 2) Using the `access_token`, call `${WHOP_API_BASE}/v5/me` (or `/me`) to fetch the creator profile (id/email).
     if (!creatorEmail || !communityId) {
-      const meResponse = await fetch(`${WHOP_API_BASE}/v5/me`, {
+      const meResponse = await fetch(`${whopConfig.WHOP_API_BASE}/v5/me`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -91,7 +92,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const meData = await meResponse.json();
 
       if (!meResponse.ok) {
-        logEvent("/api/whop/install", "error", "fetch-me-failed", { code, meData });
+        // logEvent("/api/whop/install", "error", "fetch-me-failed", { code, meData });
         return res.status(meResponse.status).json({ error: "Failed to fetch creator profile", details: meData });
       }
       creatorEmail = meData.email;
@@ -124,12 +125,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       );
 
     if (error) {
-      logEvent("/api/whop/install", "error", "db-upsert-failed", { code, creatorEmail, communityId, error });
+      // logEvent("/api/whop/install", "error", "db-upsert-failed", { code, creatorEmail, communityId, error });
       return res.status(500).json({ error: "Failed to save installation data", details: error.message });
     }
 
     // 5) Log with `logEvent('/api/whop/install','info','oauth-exchange-ok', {code, creator_email, community_id})`
-    logEvent("/api/whop/install", "info", "oauth-exchange-ok", { code, creator_email: creatorEmail, community_id: communityId });
+    // logEvent("/api/whop/install", "info", "oauth-exchange-ok", { code, creator_email: creatorEmail, community_id: communityId });
 
     // 6) Redirect 302 to `/app?installed=1&community_id=<id>` (or `/dashboard?installed=1`)
     res.redirect(302, `/app?installed=1&community_id=${communityId}`);

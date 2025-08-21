@@ -1,5 +1,5 @@
-import type { NextApiRequest, NextApiResponse } from 'next'
-import supabaseAdmin from '../../lib/supabaseAdmin'
+import type { NextApiRequest, NextApiResponse } from 'next';
+import { supabaseAdmin } from '../../lib/supabaseAdmin';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {

@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import supabaseAdmin from '../../../lib/supabaseAdmin';
-import { verifyToken } from '../../../lib/token'; // Assuming you have a token verification utility
+import { supabaseAdmin } from '../../../lib/supabaseAdmin';
+import { verifyToken, type TokenPayload } from 'lib/token';
+import { whopConfig } from '../../../lib/whopConfig';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
