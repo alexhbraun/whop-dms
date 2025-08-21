@@ -1,38 +1,43 @@
 // pages/api/whop/install.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // --- BEGIN DEBUG CAPTURE ---
-  const fwdHost = (req.headers['x-forwarded-host'] as string) || req.headers.host || '';
-  const fwdProto = (req.headers['x-forwarded-proto'] as string) || 'https';
-  const fullUrl = (() => {
-    try {
-      return new URL(req.url || '', `${fwdProto}://${fwdHost}`).toString();
-    } catch {
-      return `${fwdProto}://${fwdHost}${req.url || ''}`;
-    }
-  })();
-  // --- END DEBUG CAPTURE ---
+const log = (...args: any[]) => {
+  try {
+    // Make logs easy to find in Vercel
+    console.log("[WHOP-INSTALL]", ...args);
+  } catch {}
+};
 
-  if (req.query?.debug === '1') {
-    console.log('[INSTALL DEBUG] hit /api/whop/install', {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const method = req.method;
+  const fwdProto = (req.headers["x-forwarded-proto"] as string) ?? "https";
+  const fwdHost = req.headers.host || '';
+  const fullUrl = `${fwdProto}://${fwdHost}${req.url}`;
+  log("hit", { method, fullUrl, query: req.query });
+
+  if (req.query?.debug === "1") {
+    return res.status(200).json({
+      ok: true,
+      debug: true,
+      method,
       fullUrl,
-      method: req.method,
-      query: req.query,
-      headers: req.headers,
-    });
-    res.status(200).json({
-      message: 'Debug echo for /api/whop/install',
-      sawCode: typeof req.query.code === 'string',
-      sawBiz: typeof req.query.biz === 'string',
       query: req.query,
       headers: {
-        'user-agent': req.headers['user-agent'],
-        'x-forwarded-host': req.headers['x-forwarded-host'],
-        'x-forwarded-proto': req.headers['x-forwarded-proto'],
-        host: req.headers['host'],
+        "x-forwarded-host": req.headers["x-forwarded-host"],
+        "x-forwarded-proto": req.headers["x-forwarded-proto"],
+        "x-vercel-deployment-url": req.headers["x-vercel-deployment-url"],
       },
     });
+  }
+
+  const code = typeof req.query.code === "string" ? req.query.code : undefined;
+  const state = typeof req.query.state === "string" ? req.query.state : undefined;
+  const biz = typeof req.query.biz === "string" ? req.query.biz : (typeof req.query.biz_id === "string" ? req.query.biz_id : undefined);
+
+  log("params", { code: !!code, state: !!state, biz });
+
+  if (!code) {
+    res.status(400).send(`<pre>Missing ?code in callback\nURL: ${req.url}\nQuery: ${JSON.stringify(req.query, null, 2)}</pre>`);
     return;
   }
   try {
@@ -64,13 +69,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           "x-forwarded-proto": headers["x-forwarded-proto"],
           "x-vercel-deployment-url": headers["x-vercel-deployment-url"],
         },
-      });
-    }
-
-    if (!code) {
-      return res.status(400).json({
-        error: "Missing code",
-        hint: "This endpoint must be called by Whop after the install auth step with ?code=...&biz=...",
       });
     }
 
