@@ -2,6 +2,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { verifyToken, TokenPayload } from 'lib/token';
 import { supabase } from '../../lib/supabaseServer';
+import supabaseAdmin from '../../lib/supabaseAdmin';
 
 interface LeadPayload extends TokenPayload {
   memberId: string;
@@ -44,6 +45,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const { memberId, communityId, memberName } = payloadResult.data as LeadPayload;
 
+  if (!communityId) {
+    return res.status(400).json({ error: 'Token missing community ID' });
+  }
+
+  // Fetch installation settings
+  const { data: installation, error: installError } = await supabaseAdmin.from('installations')
+    .select('settings')
+    .eq('community_id', communityId)
+    .single();
+
+  if (installError && installError.code !== 'PGRST116') { // PGRST116 means no rows found
+    console.error('Error fetching installation settings:', installError);
+    return res.status(500).json({ message: 'Error fetching installation settings.', details: installError.message });
+  }
+
+  const settings = (installation?.settings || {}) as { requireEmail?: boolean; forwardWebhookUrl?: string };
+
   // ✅ declare/parse body fields BEFORE using them
   const {
     email,
@@ -56,6 +74,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     q2_response?: string;
     q3_response?: string;
   };
+
+  // Enforce settings (e.g., require email)
+  if (settings.requireEmail && (!email || email.trim() === '')) {
+    return res.status(400).json({ message: 'Email is required for this community.' });
+  }
 
   try {
     const { data: leadsData, error: insertError } = await supabase.from('leads').insert({
@@ -75,6 +98,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         message: 'Error saving lead.',
         details: insertError.message,
       });
+    }
+
+    // Forward to webhook URL if configured (non-blocking)
+    if (settings.forwardWebhookUrl) {
+      const forwardPayload = {
+        community_id: communityId,
+        member_id: memberId,
+        member_name: memberName,
+        email,
+        q1_response,
+        q2_response,
+        q3_response,
+        source: 'whop-lead-form',
+        timestamp: new Date().toISOString(),
+      };
+
+      fetch(settings.forwardWebhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(forwardPayload),
+      })
+        .then(response => {
+          if (!response.ok) {
+            console.warn(`Failed to forward lead to webhook (${response.status}): ${settings.forwardWebhookUrl}`);
+          }
+        })
+        .catch(err => {
+          console.error(`Error forwarding lead to webhook (${settings.forwardWebhookUrl}):`, err);
+        });
     }
 
     return res.status(200).json({ message: 'Lead submitted successfully.' });

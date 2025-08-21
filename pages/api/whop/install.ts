@@ -9,6 +9,8 @@ function getRedirectUri(req: NextApiRequest) {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  console.log('[whop/install] HIT', { method: req.method, q: req.query, ua: req.headers['user-agent'] });
+
   const startedAt = new Date().toISOString();
   const safeQuery =
     req && typeof req.query === 'object'
@@ -16,24 +18,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           Object.entries(req.query).map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : String(v)])
         )
       : {};
-  console.log('[whop/install] HIT', {
-    method: req.method,
-    url: req.url,
-    host: req.headers?.host,
-    referer: (req.headers as any)?.referer || null,
-    query: safeQuery,
-    when: startedAt,
+  console.log('[whop/install] PARAMS', {
+    hasCode: typeof (req.query as any)?.code === 'string' || typeof (req.body as any)?.code === 'string',
+    hasState: typeof (req.query as any)?.state === 'string' || typeof (req.body as any)?.state === 'string',
   });
 
   try {
     if (req.method !== 'GET' && req.method !== 'POST') {
       return res.status(405).json({ error: 'Method not allowed' });
     }
-
-    console.log('[whop/install] PARAMS', {
-      hasCode: typeof (req.query as any)?.code === 'string' || typeof (req.body as any)?.code === 'string',
-      hasState: typeof (req.query as any)?.state === 'string' || typeof (req.body as any)?.state === 'string',
-    });
 
     const code =
       (typeof req.query.code === 'string' && req.query.code) ||
@@ -46,6 +39,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       undefined;
 
     if (!code) {
+      console.log('[whop/install] missing code/state', { code, state });
       return res.status(400).json({ error: 'Missing code' });
     }
 
@@ -75,7 +69,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log('[whop/install] EXCHANGE_RESP', { status: tokenResp.status });
     if (!tokenResp.ok) {
       const text = await tokenResp.text().catch(() => '<no-text>');
-      console.error('[whop/install] EXCHANGE_FAIL', { status: tokenResp.status, body: text.slice(0, 500) });
+      console.error('[whop/install] token exchange failed', { status: tokenResp.status, text });
       return res.status(400).json({ ok: false, error: 'oauth exchange failed', status: tokenResp.status });
     }
 
@@ -157,11 +151,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (upsertError) {
       console.error('[whop/install] UPSERT_FAIL', { error: upsertError });
     } else {
-      console.log('[whop/install] UPSERT_OK', { upserted: true });
+      console.log('[whop/install] upsert ok', { community_id, creator_email });
     }
 
     // UX: manda o criador pro painel do app
-    console.log('[whop/install] REDIRECT', { to: '/app' });
+    console.log('[whop/install] redirecting', { to: '/app' });
     res.redirect(302, '/app');
   } catch (e: any) {
     console.error('[whop/install] ERROR', e);
