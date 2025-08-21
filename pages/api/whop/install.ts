@@ -13,48 +13,33 @@ const log = (...args: any[]) => {
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const method = req.method;
-  const fwdProto = (req.headers["x-forwarded-proto"] as string) ?? "https";
-  const fwdHost = req.headers.host || '';
-  const fullUrl = `${fwdProto}://${fwdHost}${req.url}`;
-  log("hit", { method, fullUrl, query: req.query });
+  logWhopConfigSummary();
+  const whopRedirectUri = `${whopConfig.APP_BASE_URL}/api/whop/install`;
+  log("hit", { method: req.method, fullUrl: req.url, query: req.query, whopRedirectUri });
 
+  // 1. Basic validation and debugging
   if (req.query?.debug === "1") {
     return res.status(200).json({
       ok: true,
       debug: true,
-      method,
-      fullUrl,
+      message: "Debug echo for /api/whop/install",
       query: req.query,
-      headers: {
-        "x-forwarded-host": req.headers["x-forwarded-host"],
-        "x-forwarded-proto": req.headers["x-forwarded-proto"],
-        "x-vercel-deployment-url": req.headers["x-vercel-deployment-url"],
-      },
+      headers: req.headers,
     });
   }
 
   const code = typeof req.query.code === "string" ? req.query.code : undefined;
-  const state = typeof req.query.state === "string" ? req.query.state : undefined;
-  const biz = typeof req.query.biz === "string" ? req.query.biz : (typeof req.query.biz_id === "string" ? req.query.biz_id : undefined);
-
-  log("params", { code: !!code, state: !!state, biz });
-
   if (!code) {
-    res.status(400).send(`<pre>Missing ?code in callback\nURL: ${req.url}\nQuery: ${JSON.stringify(req.query, null, 2)}</pre>`);
-    return;
+    return res.status(400).json({ ok: false, error: "Missing 'code' parameter in OAuth callback." });
+  }
+
+  if (!whopConfig.WHOP_CLIENT_ID || !whopConfig.WHOP_CLIENT_SECRET) {
+    console.error("[WHOP-INSTALL] Missing required environment variables: WHOP_CLIENT_ID or WHOP_CLIENT_SECRET");
+    return res.status(500).json({ ok: false, error: "Server configuration error: Missing Whop API credentials." });
   }
 
   try {
     // 1) Exchange `code` → tokens
-    const client_id = whopConfig.WHOP_CLIENT_ID;
-    const client_secret = whopConfig.WHOP_CLIENT_SECRET;
-
-    if (!client_id || !client_secret) {
-      // logEvent("/api/whop/install", "error", "env-vars-missing", { code, client_id: !!client_id, client_secret: !!client_secret });
-      return res.status(500).json({ error: "Server missing WHOP_CLIENT_ID or WHOP_CLIENT_SECRET" });
-    }
-
     const tokenResponse = await fetch(`${whopConfig.WHOP_API_BASE}/oauth/token`, {
       method: "POST",
       headers: {
@@ -63,80 +48,57 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       body: new URLSearchParams({
         grant_type: "authorization_code",
         code: code,
-        redirect_uri: `${whopConfig.APP_BASE_URL}/api/whop/install`,
-        client_id: client_id,
-        client_secret: client_secret,
+        redirect_uri: whopRedirectUri,
+        client_id: whopConfig.WHOP_CLIENT_ID,
+        client_secret: whopConfig.WHOP_CLIENT_SECRET,
       }).toString(),
     });
 
-    const tokenData = await tokenResponse.json();
+    let tokenData: any;
+    const rawResponseText = await tokenResponse.text();
+
+    try {
+      tokenData = JSON.parse(rawResponseText);
+    } catch (parseError) {
+      console.error("[WHOP-INSTALL] Failed to parse token response JSON:", parseError);
+      console.error("[WHOP-INSTALL] Raw token response:", rawResponseText);
+      return res.status(500).json({
+        ok: false,
+        error: "Failed to parse token response from Whop. API returned non-JSON.",
+        rawResponse: rawResponseText,
+      });
+    }
 
     if (!tokenResponse.ok) {
-      // logEvent("/api/whop/install", "error", "oauth-exchange-failed", { code, tokenData });
-      return res.status(tokenResponse.status).json({ error: "Failed to exchange code for tokens", details: tokenData });
-    }
-
-    log("token-exchange-ok", { tokenData });
-
-    const accessToken = tokenData.access_token;
-    let creatorEmail = tokenData.creator_email; // May be present in token response
-    let communityId = tokenData.community_id; // May be present in token response
-
-    // 2) Using the `access_token`, call `${WHOP_API_BASE}/v5/me` (or `/me`) to fetch the creator profile (id/email).
-    if (!creatorEmail || !communityId) {
-      const meResponse = await fetch(`${whopConfig.WHOP_API_BASE}/v5/me`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
+      console.error("[WHOP-INSTALL] OAuth exchange failed:", tokenResponse.status, tokenData);
+      return res.status(tokenResponse.status).json({
+        ok: false,
+        error: "Failed to exchange code for tokens.",
+        details: tokenData?.error_description || tokenData?.error || "Unknown error",
+        rawResponse: rawResponseText,
       });
-      const meData = await meResponse.json();
-
-      if (!meResponse.ok) {
-        // logEvent("/api/whop/install", "error", "fetch-me-failed", { code, meData });
-        return res.status(meResponse.status).json({ error: "Failed to fetch creator profile", details: meData });
-      }
-      creatorEmail = meData.email;
-      communityId = meData.community_id; // Still might be undefined
-      log("me-fetch-ok", { meData });
     }
 
-    // 3) Try to resolve the install’s company/community/experience:
-    let settingsNeedsResolution = false;
-    if (!communityId) {
-      communityId = `pending_${Date.now()}`;
-      settingsNeedsResolution = true;
+    log("token-exchange-ok", { tokenData: { access_token_preview: tokenData.access_token?.substring(0, 5) + '...' } });
+
+    // 4) On success: return JSON with preview of access token when 'debug' is set
+    if (req.query?.debug === "1") {
+      return res.status(200).json({
+        ok: true,
+        message: "OAuth exchange successful (debug mode).",
+        accessTokenPreview: tokenData.access_token ? tokenData.access_token.substring(0, 10) + '...' : 'N/A',
+        scope: tokenData.scope,
+        tokenType: tokenData.token_type,
+        expiresIn: tokenData.expires_in,
+      });
     }
 
-    // 4) Upsert to `installations`:
-    const { data, error } = await supabaseAdmin
-      .from("installations")
-      .upsert(
-        {
-          community_id: communityId,
-          creator_email: creatorEmail,
-          active: true,
-          plan: "default",
-          settings: {
-            auth: tokenData,
-            needs_resolution: settingsNeedsResolution,
-          },
-        },
-        { onConflict: "community_id" }
-      );
-
-    if (error) {
-      // logEvent("/api/whop/install", "error", "db-upsert-failed", { code, creatorEmail, communityId, error });
-      return res.status(500).json({ error: "Failed to save installation data", details: error.message });
-    }
-
-    // 5) Log with `logEvent('/api/whop/install','info','oauth-exchange-ok', {code, creator_email, community_id})`
-    // logEvent("/api/whop/install", "info", "oauth-exchange-ok", { code, creator_email: creatorEmail, community_id: communityId });
-
-    // 6) Redirect 302 to `/app?installed=1&community_id=<id>` (or `/dashboard?installed=1`)
-    res.redirect(302, `/app?installed=1&community_id=${communityId}`);
+    // Otherwise redirect to /dashboard?installed=1
+    res.redirect(302, `/dashboard?installed=1`);
     return;
-  } catch (err) {
-    console.error("WHOP_INSTALL error", err);
-    return res.status(500).json({ error: "Internal error" });
+
+  } catch (err: any) {
+    console.error("[WHOP-INSTALL] Unhandled error during OAuth flow:", err);
+    return res.status(500).json({ ok: false, error: "Internal server error during OAuth flow.", details: err?.message || String(err) });
   }
 }
