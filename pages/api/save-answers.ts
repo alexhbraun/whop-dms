@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
-import supabaseAdmin from '../../lib/supabaseAdmin'
+import { supabaseAdmin } from '../../lib/supabaseAdmin'
 import { verifyToken, type TokenPayload } from 'lib/token'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

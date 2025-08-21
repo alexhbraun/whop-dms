@@ -1,35 +1,37 @@
 // lib/whopClient.ts
-import { whopConfig } from './whopConfig';
+import whopConfig from './whopConfig';
 
-export type SendDMInput = {
-  toMemberId: string;
-  companyId: string;
-  agentUserId?: string;
-  text: string;
-};
-
-export type SendDMResult = { ok: boolean; status: number; mock: boolean; body?: any };
+export type SendDMInput = { toMemberId: string; text: string };
+export type SendDMResult = { ok: boolean; status: number; mock?: boolean; error?: string };
 
 export async function sendWhopDM(input: SendDMInput): Promise<SendDMResult> {
-  if (whopConfig.mockDM || !whopConfig.apiKey) {
+  const mock = !!whopConfig.mockDM && !whopConfig.apiKey;
+
+  if (mock) {
     console.log('[MOCK DM]', { to: input.toMemberId, text: input.text.slice(0, 160) });
     return { ok: true, status: 200, mock: true };
   }
 
-  // Placeholder external call — replace with official Whop Messages API endpoint when finalized.
-  // For now we call our internal API `/api/send-welcome?dryRun=1` which should return 200 if the message composes OK.
-  const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/send-welcome?dryRun=1`, {
+  const apiKey = whopConfig.apiKey || process.env.WHOP_API_KEY || '';
+  if (!apiKey) return { ok: false, status: 0, error: 'WHOP_API_KEY missing' };
+
+  const res = await fetch(`${whopConfig.WHOP_API_BASE}/v2/dms`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${whopConfig.apiKey}` },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
     body: JSON.stringify({
-      memberId: input.toMemberId,
-      companyId: input.companyId,
-      agentUserId: input.agentUserId ?? whopConfig.agentUserId,
+      to_member_id: input.toMemberId,
       text: input.text,
     }),
   });
-  const body = await res.text().catch(() => undefined);
-  return { ok: res.ok, status: res.status, mock: false, body };
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    return { ok: false, status: res.status, error: text || 'sendWhopDM failed' };
+  }
+  return { ok: true, status: res.status };
 }
 
 

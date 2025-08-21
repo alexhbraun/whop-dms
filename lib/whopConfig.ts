@@ -1,33 +1,37 @@
 // lib/whopConfig.ts
+export const APP_BASE_URL =
+  process.env.APP_BASE_URL || 'http://localhost:3000';
+
+export const WHOP_API_BASE =
+  process.env.WHOP_API_BASE || 'https://api.whop.com';
+
+export const WHOP_CLIENT_ID = process.env.WHOP_CLIENT_ID || '';
+export const WHOP_CLIENT_SECRET = process.env.WHOP_CLIENT_SECRET || '';
+
+export const WHOP_API_KEY = process.env.WHOP_API_KEY || '';
+export const MOCK_DM =
+  (process.env.MOCK_DM ?? '').toLowerCase() === 'true' ||
+  process.env.MOCK_DM === '1';
+
 export type WhopConfig = {
-  apiKey: string | undefined;
-  webhookSecret: string | undefined;
-  appId: string | undefined;
-  agentUserId: string | undefined;
-  companyId: string | undefined;
-  mockDM: boolean;
+  APP_BASE_URL: string;
+  WHOP_API_BASE: string;
+  WHOP_CLIENT_ID: string;
+  WHOP_CLIENT_SECRET: string;
+  apiKey?: string;
+  mockDM?: boolean;
 };
 
 export const whopConfig: WhopConfig = {
-  apiKey: process.env.WHOP_API_KEY,
-  webhookSecret: process.env.WHOP_WEBHOOK_SECRET,
-  appId: process.env.NEXT_PUBLIC_WHOP_APP_ID,
-  agentUserId: process.env.NEXT_PUBLIC_WHOP_AGENT_USER_ID,
-  companyId: process.env.NEXT_PUBLIC_WHOP_COMPANY_ID,
-  mockDM: process.env.MOCK_DM === '1',
+  APP_BASE_URL,
+  WHOP_API_BASE,
+  WHOP_CLIENT_ID,
+  WHOP_CLIENT_SECRET,
+  apiKey: WHOP_API_KEY || undefined,
+  mockDM: MOCK_DM || undefined,
 };
 
-export function logWhopConfigSummary() {
-  const mask = (v?: string) => (v ? `${v.length} chars` : 'MISSING');
-  console.log('[WHOP CONFIG]', {
-    apiKey: mask(whopConfig.apiKey),
-    webhookSecret: mask(whopConfig.webhookSecret),
-    appIdPresent: !!whopConfig.appId,
-    agentUserIdPresent: !!whopConfig.agentUserId,
-    companyIdPresent: !!whopConfig.companyId,
-    mockDM: whopConfig.mockDM,
-  });
-}
+export default whopConfig;
 
 
 

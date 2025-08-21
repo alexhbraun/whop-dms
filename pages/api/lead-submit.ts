@@ -2,7 +2,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { verifyToken, TokenPayload } from 'lib/token';
 import { supabase } from '../../lib/supabaseServer';
-import supabaseAdmin from '../../lib/supabaseAdmin';
+import { supabaseAdmin } from '../../lib/supabaseAdmin';
 
 interface LeadPayload extends TokenPayload {
   memberId: string;
