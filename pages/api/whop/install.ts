@@ -1,104 +1,112 @@
-// pages/api/whop/install.ts
+import type { NextApiRequest, NextApiResponse } from 'next';
 
-import type { NextApiRequest, NextApiResponse } from "next";
-import { whopConfig, logWhopConfigSummary } from "../../../lib/whopConfig";
-import { logEvent } from "../../../lib/log";
-import { supabaseAdmin } from "../../../lib/supabaseAdmin";
+const TOKEN_URL = 'https://api.whop.com/api/v2/oauth/token';
 
-const log = (...args: any[]) => {
-  try {
-    // Make logs easy to find in Vercel
-    console.log("[WHOP-INSTALL]", ...args);
-  } catch {}
-};
+function required(name: string, v?: string) {
+  if (!v) throw new Error(`Missing required env: ${name}`);
+  return v;
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  logWhopConfigSummary();
-  const whopRedirectUri = `${whopConfig.APP_BASE_URL}/api/whop/install`;
-  log("hit", { method: req.method, fullUrl: req.url, query: req.query, whopRedirectUri });
+  const method = req.method ?? 'GET';
 
-  // 1. Basic validation and debugging
-  if (req.query?.debug === "1") {
-    return res.status(200).json({
-      ok: true,
-      debug: true,
-      message: "Debug echo for /api/whop/install",
-      query: req.query,
-      headers: req.headers,
-    });
-  }
-
-  const code = typeof req.query.code === "string" ? req.query.code : undefined;
-  if (!code) {
-    return res.status(400).json({ ok: false, error: "Missing 'code' parameter in OAuth callback." });
-  }
-
-  if (!whopConfig.WHOP_CLIENT_ID || !whopConfig.WHOP_CLIENT_SECRET) {
-    console.error("[WHOP-INSTALL] Missing required environment variables: WHOP_CLIENT_ID or WHOP_CLIENT_SECRET");
-    return res.status(500).json({ ok: false, error: "Server configuration error: Missing Whop API credentials." });
+  // We accept GET (Whop redirects with query) and POST (just in case)
+  if (method !== 'GET' && method !== 'POST') {
+    return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   }
 
   try {
-    // 1) Exchange `code` → tokens
-    const tokenResponse = await fetch(`${whopConfig.WHOP_API_BASE}/oauth/token`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code: code,
-        redirect_uri: whopRedirectUri,
-        client_id: whopConfig.WHOP_CLIENT_ID,
-        client_secret: whopConfig.WHOP_CLIENT_SECRET,
-      }).toString(),
+    const WHOP_CLIENT_ID    = required('WHOP_CLIENT_ID',     process.env.WHOP_CLIENT_ID);
+    const WHOP_CLIENT_SECRET = required('WHOP_CLIENT_SECRET', process.env.WHOP_CLIENT_SECRET);
+
+    // Build our redirect_uri exactly as registered in Whop dashboard
+    const baseUrl = process.env.APP_BASE_URL || process.env.NEXTAUTH_URL || '';
+    const redirectUri = `${baseUrl}/api/whop/install`;
+
+    // Read params
+    const code  = (req.query.code ?? (req.body && req.body.code)) as string | undefined;
+    const state = (req.query.state ?? (req.body && req.body.state)) as string | undefined;
+
+    console.log('[WHOP_INSTALL] hit', {
+      method,
+      fullUrl: req.url,
+      query: req.query,
     });
 
-    let tokenData: any;
-    const rawResponseText = await tokenResponse.text();
+    if (!code) {
+      return res.status(400).json({ ok: false, error: 'missing_code' });
+    }
 
+    // Exchange code -> token (x-www-form-urlencoded)
+    const form = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirectUri,
+      client_id: WHOP_CLIENT_ID,
+      client_secret: WHOP_CLIENT_SECRET,
+    });
+
+    const tokResp = await fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
+      },
+      body: form.toString(),
+    });
+
+    const raw = await tokResp.text();
+    console.log('[WHOP_INSTALL] token raw status/body', tokResp.status, raw);
+
+    // If Whop ever returns non-JSON (e.g. empty string or HTML), catch it and return debuggable info
+    let parsed: any = null;
     try {
-      tokenData = JSON.parse(rawResponseText);
-    } catch (parseError) {
-      console.error("[WHOP-INSTALL] Failed to parse token response JSON:", parseError);
-      console.error("[WHOP-INSTALL] Raw token response:", rawResponseText);
-      return res.status(500).json({
+      parsed = raw ? JSON.parse(raw) : null;
+    } catch {
+      return res.status(502).json({
         ok: false,
-        error: "Failed to parse token response from Whop. API returned non-JSON.",
-        rawResponse: rawResponseText,
+        error: 'Failed to parse token response from Whop. API returned non-JSON.',
+        rawResponse: raw,
+        status: tokResp.status,
       });
     }
 
-    if (!tokenResponse.ok) {
-      console.error("[WHOP-INSTALL] OAuth exchange failed:", tokenResponse.status, tokenData);
-      return res.status(tokenResponse.status).json({
+    // Handle non-200 with JSON body
+    if (!tokResp.ok) {
+      return res.status(tokResp.status).json({
         ok: false,
-        error: "Failed to exchange code for tokens.",
-        details: tokenData?.error_description || tokenData?.error || "Unknown error",
-        rawResponse: rawResponseText,
+        error: parsed?.error || 'whop_token_exchange_failed',
+        details: parsed,
       });
     }
 
-    log("token-exchange-ok", { tokenData: { access_token_preview: tokenData.access_token?.substring(0, 5) + '...' } });
-
-    // 4) On success: return JSON with preview of access token when 'debug' is set
-    if (req.query?.debug === "1") {
-      return res.status(200).json({
-        ok: true,
-        message: "OAuth exchange successful (debug mode).",
-        accessTokenPreview: tokenData.access_token ? tokenData.access_token.substring(0, 10) + '...' : 'N/A',
-        scope: tokenData.scope,
-        tokenType: tokenData.token_type,
-        expiresIn: tokenData.expires_in,
+    if (!parsed?.access_token) {
+      return res.status(502).json({
+        ok: false,
+        error: 'missing_access_token_in_response',
+        details: parsed,
       });
     }
 
-    // Otherwise redirect to /dashboard?installed=1
-    res.redirect(302, `/dashboard?installed=1`);
-    return;
+    // (Optional) you can persist parsed.access_token / refresh_token with your DB here.
+    console.log('[WHOP_INSTALL] token parsed summary', {
+      has_access_token: !!parsed.access_token,
+      token_type: parsed.token_type ?? null,
+      scope: parsed.scope ?? null,
+      state: state ?? null,
+    });
 
+    // Success response for now (E2E test)
+    return res.status(200).json({
+      ok: true,
+      state: state ?? null,
+      token_type: parsed.token_type ?? 'bearer',
+      scope: parsed.scope ?? '',
+      // do not echo the token itself in prod logs; returning short length only
+      access_token_len: typeof parsed.access_token === 'string' ? parsed.access_token.length : 0,
+    });
   } catch (err: any) {
-    console.error("[WHOP-INSTALL] Unhandled error during OAuth flow:", err);
-    return res.status(500).json({ ok: false, error: "Internal server error during OAuth flow.", details: err?.message || String(err) });
+    console.error('[WHOP_INSTALL] fatal error', err?.message, err?.stack);
+    return res.status(500).json({ ok: false, error: 'internal_error', message: err?.message });
   }
 }
