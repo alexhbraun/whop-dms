@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-const TOKEN_URL = 'https://api.whop.com/api/v2/oauth/token';
+const TOKEN_URL = 'https://api.whop.com/oauth/token';
 
 function required(name: string, v?: string) {
   if (!v) throw new Error(`Missing required env: ${name}`);
