@@ -9,12 +9,32 @@ function getRedirectUri(req: NextApiRequest) {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const startedAt = new Date().toISOString();
+  const safeQuery =
+    req && typeof req.query === 'object'
+      ? Object.fromEntries(
+          Object.entries(req.query).map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : String(v)])
+        )
+      : {};
+  console.log('[whop/install] HIT', {
+    method: req.method,
+    url: req.url,
+    host: req.headers?.host,
+    referer: (req.headers as any)?.referer || null,
+    query: safeQuery,
+    when: startedAt,
+  });
+
   try {
     if (req.method !== 'GET' && req.method !== 'POST') {
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    // Whop will call this with ?code=...&state=... (GET). Accept POST fallback too.
+    console.log('[whop/install] PARAMS', {
+      hasCode: typeof (req.query as any)?.code === 'string' || typeof (req.body as any)?.code === 'string',
+      hasState: typeof (req.query as any)?.state === 'string' || typeof (req.body as any)?.state === 'string',
+    });
+
     const code =
       (typeof req.query.code === 'string' && req.query.code) ||
       (typeof (req.body as any)?.code === 'string' && (req.body as any).code) ||
@@ -39,6 +59,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Exchange authorization code for token
+    console.log('[whop/install] EXCHANGE_START');
     const tokenResp = await fetch(`${apiBase}/oauth/token`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -51,13 +72,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }),
     });
 
+    console.log('[whop/install] EXCHANGE_RESP', { status: tokenResp.status });
     if (!tokenResp.ok) {
-      const text = await tokenResp.text();
-      console.error('Whop token exchange failed', tokenResp.status, text);
-      return res.status(401).json({ error: 'Token exchange failed', details: text });
+      const text = await tokenResp.text().catch(() => '<no-text>');
+      console.error('[whop/install] EXCHANGE_FAIL', { status: tokenResp.status, body: text.slice(0, 500) });
+      return res.status(400).json({ ok: false, error: 'oauth exchange failed', status: tokenResp.status });
     }
 
     const tok: any = await tokenResp.json();
+
+    const redact = (s?: string) => (typeof s === 'string' ? s.slice(0, 2) + '...' + s.slice(-4) : null);
+    console.log('[whop/install] EXCHANGE_OK', {
+      access_token: redact(tok?.access_token),
+      refresh_token: redact(tok?.refresh_token),
+      token_type: tok?.token_type || null,
+      expires_in: tok?.expires_in ?? null,
+    });
 
     // Try to extract identifiers Whop may provide (names can vary)
     const community_id =
@@ -92,11 +122,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
     };
 
+    console.log('[whop/install] UPSERT_START', { community_id, creator_email, plan });
+    let upsertError: any = null;
     if (!community_id) {
       // Sem ID ainda? Crie um registro "parcial" e os webhooks completarão depois.
       // Usamos uma chave derivada para não bloquear o fluxo.
       const tempId = `pending_${Date.now()}`;
-      await supabase.from('installations').upsert(
+      const { error } = await supabase.from('installations').upsert(
         {
           community_id: tempId,
           creator_email,
@@ -106,9 +138,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         },
         { onConflict: 'community_id' }
       );
+      upsertError = error;
       console.warn('OAuth install without community_id; saved as temp row', tempId);
     } else {
-      await supabase.from('installations').upsert(
+      const { error } = await supabase.from('installations').upsert(
         {
           community_id,
           creator_email,
@@ -118,12 +151,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         },
         { onConflict: 'community_id' }
       );
+      upsertError = error;
+    }
+
+    if (upsertError) {
+      console.error('[whop/install] UPSERT_FAIL', { error: upsertError });
+    } else {
+      console.log('[whop/install] UPSERT_OK', { upserted: true });
     }
 
     // UX: manda o criador pro painel do app
+    console.log('[whop/install] REDIRECT', { to: '/app' });
     res.redirect(302, '/app');
   } catch (e: any) {
-    console.error('whop/oauth install error', e);
-    return res.status(500).json({ error: 'server error', details: String(e?.message || e) });
+    console.error('[whop/install] ERROR', e);
+    return res.status(500).json({ ok: false, error: 'install handler crashed' });
   }
 }
