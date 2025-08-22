@@ -1,0 +1,224 @@
+cd C:\Users\alexa\whop-challenge-tracker
+
+$URL = "https://tilmcbbxmowgjcfybraw.supabase.co/rest/v1/settings?select=id&limit=1"
+$KEY = (Select-String -Path .env.local -Pattern '^SUPABASE_SERVICE_ROLE=' -Encoding UTF8).Line.Split('=')[1]
+Invoke-WebRequest -Uri $URL -Headers @{ apikey = $KEY; Authorization = "Bearer $KEY" } -Method GET
+
+
+
+
+$token = "eyJjb21tdW5pdHlfaWQiOiJkZWZhdWx0X2NvbW11bml0eV8xIiwibWVtYmVyX2lkIjoidGVzdF9tZW1iZXJfOTk5IiwiZXhwIjoxNzU1NjgxNjg1fQ.0OTPbjJwyZXQ7pMwSo5DoiaGsmcLoL1Jak1BMUBgaQA"
+
+
+app_Atr7OsE9yVXSkQ
+
+$clientId="app_Atr7OsE9yVXSkQ"
+$redir=[System.Uri]::EscapeDataString("https://whop-dms.vercel.app/api/whop/install")
+$u="https://whop.com/oauth/authorize?client_id=$clientId&redirect_uri=$redir&response_type=code&state=devtest123&scope=install&biz_id=biz_cmmO4cX6A3eGoG"
+try { (Invoke-WebRequest -Uri $u -MaximumRedirection 0 -ErrorAction Stop).StatusCode } catch { $_.Exception.Response.StatusCode.value__ }
+
+
+https://whop.com/oauth
+  ?client_id=app_Atr7OsE9yVXSkQ
+  &redirect_uri=https%3A%2F%2Fwhop-dms.vercel.app%2Fapi%2Fwhop%2Finstall
+  &response_type=code
+  &scope=install
+  &state=test_state
+  &biz_id=biz_cmmO4cX6A3eGoG  
+
+
+https://whop.com/oauth/authorize
+  ?client_id=app_Atr7OsE9yVXSkQ
+  &redirect_uri=https%3A%2F%2Fwhop-dms.vercel.app%2Fapi%2Fwhop%2Finstall
+  &response_type=code
+  &scope=install
+  &state=test_state
+  &biz_id=biz_cmmO4cX6A3eGoG
+
+
+
+
+
+d3b92d1e13d5e80e04c0a448ae5e19f3
+# ----- FILL THESE -----
+$CID   = "app_Atr7OsE9yVXSkQ"                     # Client ID
+$CSEC  = "nqRdQrw6IHx_rmfx1msjSC-lfXQfIqcyB6TXGYh6Ae4"     # Client Secret (from Whop dashboard, "Reveal")
+$REDIR = "https://whop-dms.vercel.app/api/whop/install"
+$CODE  = "d3b92d1e13d5e80e04c0a448ae5e19f3"
+
+$headers = @{
+  "Accept"       = "application/json"
+  "Content-Type" = "application/x-www-form-urlencoded"
+}
+
+$body = @{
+  grant_type    = "authorization_code"
+  code          = $CODE
+  redirect_uri  = $REDIR
+  client_id     = $CID
+  client_secret = $CSEC
+}
+
+$resp = Invoke-WebRequest -Uri "https://whop.com/api/v2/oauth/token" `
+  -Method POST -Headers $headers -Body $body
+
+Write-Host "HTTP $($resp.StatusCode)"
+$raw = $resp.Content
+Write-Host "Raw:"; $raw
+try {
+  $json = $raw | ConvertFrom-Json
+  $json | Format-List *
+} catch {
+  Write-Host "Non-JSON"
+}
+
+
+
+$CID   = "app_Atr7OsE9yVXSkQ"     # your Client ID
+$CSEC  = "nqRdQrw6IHx_rmfx1msjSC-lfXQfIqcyB6TXGYh6Ae4"  # from Whop dashboard (Reveal)
+$REDIR = "https://whop-dms.vercel.app/api/whop/install"
+$CODE  = "cd515f0a9973412be9c995b2b431e741"  # from Step 2
+
+
+
+
+
+0b556bdc28cd22b583f02917571cf218
+
+# ----- FILL THESE -----
+$CODE = "0b556bdc28cd22b583f02917571cf218"
+$CID  = "app_Atr7OsE9yVXSkQ"
+$CSEC = "0b556bdc28cd22b583f02917571cf218"
+$REDIR = "https://whop-dms.vercel.app/api/whop/install"
+
+$ErrorActionPreference = 'Stop'
+
+# Basic auth header: base64(client_id:client_secret)
+$basicBytes = [Text.Encoding]::ASCII.GetBytes("$CID`:$CSEC")
+$basic = [Convert]::ToBase64String($basicBytes)
+$headers = @{
+  "Authorization" = "Basic $basic"
+  "Accept"        = "application/json"
+  "Content-Type"  = "application/x-www-form-urlencoded"
+}
+
+# x-www-form-urlencoded body
+$body = @{
+  grant_type   = "authorization_code"
+  code         = $CODE
+  redirect_uri = $REDIR
+}
+
+# Correct endpoint (host = whop.com, path = /api/v2/oauth/token)
+$tokenUrl = "https://whop.com/api/v2/oauth/token"
+
+function Invoke-TokenPost([string]$url) {
+  try {
+    return Invoke-WebRequest -Uri $url -Method POST -Headers $headers `
+      -ContentType "application/x-www-form-urlencoded" -Body $body
+  } catch {
+    $resp = $_.Exception.Response
+    if ($resp -and $resp.StatusCode.value__ -in 301,302,307,308) {
+      $loc = $resp.Headers['Location']
+      if (-not $loc) { throw "Redirect without Location header" }
+
+      # 👇 Resolve relative Location (e.g., '/api/v2/oauth/token/') against the original base URI
+      $base = [Uri]$url
+      $locUri = if ([Uri]::IsWellFormedUriString($loc,'Absolute')) { [Uri]$loc } else { [Uri]::new($base, $loc) }
+      Write-Host "Following redirect to: $($locUri.AbsoluteUri)"
+
+      return Invoke-WebRequest -Uri $locUri.AbsoluteUri -Method POST -Headers $headers `
+        -ContentType "application/x-www-form-urlencoded" -Body $body
+    }
+    $raw = if ($resp) { (New-Object IO.StreamReader($resp.GetResponseStream())).ReadToEnd() } else { '' }
+    throw "[HTTP $($resp.StatusCode.value__)] $raw"
+  }
+}
+
+$response = Invoke-TokenPost $tokenUrl
+Write-Host "Status: $($response.StatusCode)"
+$raw = $response.Content
+Write-Host "Raw body:`n$raw"
+
+try { ($raw | ConvertFrom-Json) | Format-List * } catch { Write-Host "Non-JSON body received." }
+
+
+
+
+
+
+6c3d9a4ffd0f9c5fd62c6f23a96f047a
+
+
+
+
+}
+$BODY = $bodyObj | ConvertTo-Json -Compress
+
+# (optional) see what you'll send
+$BODY
+
+# 3) POST it
+Invoke-RestMethod `
+  -Uri "http://localhost:3000/api/save-answers" `
+  -Method POST `
+  -Body $BODY `
+  -ContentType "application/json"
+
+
+git init   # if not already a git repo
+git remote add origin https://github.com/alexhbraun/whop-dms.git
+git add .
+git commit -m "Initial Whop app"
+git push -u origin main
+
+curl.exe -i https://whop-dms.vercel.app/api/debug-token -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LXVzZXIiLCJyb2xlIjoidGVzdGVyIiwiZXhwIjoxNzU1NjM3NDEyfQ.YSS43LVfz8zyaHxYRZwAIP140rRav0tsIpiMw7t7y8A"
+curl.exe -i https://whop-dms.vercel.app/api/welcome-data -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LXVzZXIiLCJyb2xlIjoidGVzdGVyIiwiZXhwIjoxNzU1NjM3NDEyfQ.YSS43LVfz8zyaHxYRZwAIP140r$code   = "0bce8f0eb9ed76414138ca9cdaf29fda"
+$cid    = "app_Atr7OsE9yVXSkQ"
+$csec   = "nqRdQrw6IHx_rmfx1msjSC-lfXQfIqcyB6TXGYh6Ae4"
+$redir  = [System.Uri]::EscapeDataString("https://whop-dms.vercel.app/api/whop/install")
+
+$body   = "grant_type=authorization_code&code=$code&client_id=$cid&client_secret=$csec&redirect_uri=$redir"
+$resp   = Invoke-WebRequest -Uri "https://api.whop.com/oauth/token" `
+          -Method POST `
+          -ContentType "application/x-www-form-urlencoded" `
+          -Body $body `
+          -ErrorAction Stop
+
+$resp.StatusCode
+$resp.Content
+
+Rav0tsIpiMw7t7y8A"
+curl.exe -i -X POST https://whop-dms.vercel.app/api/lead-submit -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LXVzZXIiLCJyb2xlIjoidGVzdGVyIiwiZXhwIjoxNzU1NjM3NDEyfQ.YSS43LVfz8zyaHxYRZwAIP140rRav0tsIpiMw7t7y8A" -H "Content-Type: application/json" -d "{\"foo\":\"bar\"}"
+
+
+79f6314805dfdaebb88ea4b6b83e1d3a
+
+# === 1. Configure ===
+$clientId     = "app_Atr7OsE9yVXSkQ"        # your Whop app id
+$clientSecret = "nqRdQrw6IHx_rmfx1msjSC-lfXQfIqcyB6TXGYh6Ae4"      # from Whop dev dashboard
+$redirectUri  = "https://whop-dms.vercel.app/api/whop/install"  # must match dashboard exactly
+$scope        = "install"                   # or read_user if you're testing that
+$state        = "test_state_$(Get-Random)"  # any string you want
+
+# === 2. Build the correct authorize URL ===
+Add-Type -AssemblyName System.Web
+$encodedRedirect = [System.Web.HttpUtility]::UrlEncode($redirectUri)
+$authUrl = "https://whop.com/oauth/authorize?client_id=$clientId&redirect_uri=$encodedRedirect&response_type=code&scope=$scope&state=$state"
+
+$authUrl
+Start-Process $authUrl      # opens your browser; login & click "Install"
+
+
+
+
+
+https://whop.com/oauth?client_id=app_Atr70sE9yVXSkQ
+  &redirect_uri=https%3A%2F%2Fwhop-dms.vercel.app%2Fapi%2Fwhop%2Finstall
+  &response_type=code
+  &scope=install
+  &state=test_state
+
+
+
+
