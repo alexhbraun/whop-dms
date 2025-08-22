@@ -86,7 +86,6 @@ async function exchangeToken(
   redirect_uri: string,
   client_id: string,
   client_secret: string,
-  variant: 'body' | 'basic',
   diagnostics: DiagnosticEntry[]
 ): Promise<{ accessToken: string; refreshToken?: string; rawJson: any } | null> {
   const tokenEndpoint = 'https://whop.com/api/v2/oauth/token';
@@ -94,37 +93,30 @@ async function exchangeToken(
     grant_type: 'authorization_code',
     code,
     redirect_uri,
+    client_id,
+    client_secret,
   });
 
   const options: RequestInit = {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+    body: form.toString(),
   };
 
-  if (variant === 'body') {
-    form.set('client_id', client_id);
-    form.set('client_secret', client_secret);
-    options.body = form.toString();
-  } else {
-    const basicAuth = Buffer.from(`${client_id}:${client_secret}`).toString('base64');
-    options.headers = { ...options.headers, 'Authorization': `Basic ${basicAuth}` };
-    options.body = form.toString();
-  }
-
-  console.log(`[WHOP_INSTALL] Attempting token exchange (variant: ${variant})`,
+  console.log(`[WHOP_INSTALL] Attempting token exchange`,
     { client_id: maskSecret(client_id), redirect_uri });
 
   try {
-    const resp = await fetchWithRetries(tokenEndpoint, options, `Token Exchange (${variant})`, diagnostics);
+    const resp = await fetchWithRetries(tokenEndpoint, options, `Token Exchange`, diagnostics);
     const rawText = await resp.text();
 
     let json: any;
     try {
       json = JSON.parse(rawText);
     } catch {
-      console.error(`[WHOP_INSTALL] Token exchange (${variant}) non-JSON response:`, rawText.slice(0, 200));
+      console.error(`[WHOP_INSTALL] Token exchange non-JSON response:`, rawText.slice(0, 200));
       diagnostics.push({
-        attempt: `Token Exchange (${variant}) - JSON Parse Error`,
+        attempt: `Token Exchange - JSON Parse Error`,
         status: resp.status,
         headers: Object.fromEntries(resp.headers.entries()),
         rawBody: rawText.slice(0, 4000),
@@ -134,9 +126,9 @@ async function exchangeToken(
     }
 
     if (!resp.ok || !json?.access_token) {
-      console.error(`[WHOP_INSTALL] Token exchange (${variant}) failed:`, json);
+      console.error(`[WHOP_INSTALL] Token exchange failed:`, json);
       diagnostics.push({
-        attempt: `Token Exchange (${variant}) - API Error`,
+        attempt: `Token Exchange - API Error`,
         status: resp.status,
         headers: Object.fromEntries(resp.headers.entries()),
         rawBody: rawText.slice(0, 4000),
@@ -145,10 +137,10 @@ async function exchangeToken(
       return null;
     }
 
-    console.log(`[WHOP_INSTALL] Token exchange (${variant}) successful.`);
+    console.log(`[WHOP_INSTALL] Token exchange successful.`);
     return { accessToken: json.access_token, refreshToken: json.refresh_token, rawJson: json };
   } catch (e: any) {
-    console.error(`[WHOP_INSTALL] Token exchange (${variant}) unhandled error:`, e);
+    console.error(`[WHOP_INSTALL] Token exchange unhandled error:`, e);
     return null; // Error already pushed to diagnostics in fetchWithRetries
   }
 }
@@ -234,13 +226,7 @@ export default async function handler(
   let tokenExchangeResult: { accessToken: string; refreshToken?: string; rawJson: any } | null = null;
   let meVerificationResult: { status: number; me: any } | null = null;
 
-  // Attempt Variant A: body creds
-  tokenExchangeResult = await exchangeToken(code, redirect_uri, client_id, client_secret, 'body', diagnostics);
-
-  // If Variant A failed, attempt Variant B: basic auth
-  if (!tokenExchangeResult) {
-    tokenExchangeResult = await exchangeToken(code, redirect_uri, client_id, client_secret, 'basic', diagnostics);
-  }
+  tokenExchangeResult = await exchangeToken(code, redirect_uri, client_id, client_secret, diagnostics);
 
   if (tokenExchangeResult) {
     // If token exchange succeeded, verify the token
