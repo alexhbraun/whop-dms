@@ -93,13 +93,17 @@ async function exchangeToken(
     grant_type: 'authorization_code',
     code,
     redirect_uri,
-    client_id,
-    client_secret,
   });
+
+  const basicAuth = Buffer.from(`${client_id}:${client_secret}`).toString('base64');
 
   const options: RequestInit = {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json',
+      'Authorization': `Basic ${basicAuth}`,
+    },
     body: form.toString(),
   };
 
