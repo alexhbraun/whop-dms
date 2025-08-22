@@ -13,7 +13,6 @@ type ErrorResponse = {
 };
 
 const WHOP_TOKEN_ENDPOINTS = [
-  "https://whop.com/oauth/token",
   "https://whop.com/api/v2/oauth/token",
 ];
 
@@ -81,47 +80,6 @@ async function exchangeToken(code: string, WHOP_CLIENT_ID: string, WHOP_CLIENT_S
     } catch (e: any) {
       diagnostics.push({
         attempt: 'Token Exchange (body) (exception)',
-        endpoint,
-        status: 0,
-        headers: {},
-        rawBody: "",
-        error: String(e?.message || e),
-      });
-    }
-
-    // Variant B: BASIC (Authorization: Basic base64(client_id:client_secret))
-    try {
-      const basic = Buffer.from(`${WHOP_CLIENT_ID}:${WHOP_CLIENT_SECRET}`).toString('base64');
-      const headersB = {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json',
-        'Authorization': `Basic ${basic}`,
-      };
-      const basicAuthForm = new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: redirectUri,
-      });
-      const resB = await postForm(endpoint, basicAuthForm, headersB);
-      const textB = await resB.text();
-      let jsonB: any = null;
-      try { jsonB = JSON.parse(textB); } catch {}
-
-      diagnostics.push({
-        attempt: 'Token Exchange (basic)',
-        endpoint,
-        status: resB.status,
-        headers: Object.fromEntries(Array.from(resB.headers.entries()).slice(0, 15)),
-        rawBody: (textB || '').slice(0, 600),
-        error: resB.ok ? undefined : 'HTTP not ok',
-      });
-
-      if (resB.ok && jsonB?.access_token) {
-        return { ok: true as const, token: jsonB, diagnostics };
-      }
-    } catch (e: any) {
-      diagnostics.push({
-        attempt: 'Token Exchange (basic) (exception)',
         endpoint,
         status: 0,
         headers: {},
