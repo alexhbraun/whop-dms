@@ -32,14 +32,15 @@ export default async function handler(
   if (!code) {
     return res.status(400).json({ ok: false, reason: 'missing_code' });
   }
+  console.log(`[WHOP_INSTALL] Received authorization code: ${code ? `${code.substring(0, 8)}...${code.substring(code.length - 8)}` : 'N/A'}`);
 
-  // CORRECT - NO Authorization header for token exchange
+  const REDIRECT_URI = process.env.WHOP_REDIRECT_URI || `https://${req.headers.host}/api/whop/install`;
+
   const client_id_log = process.env.WHOP_CLIENT_ID ? `${process.env.WHOP_CLIENT_ID.substring(0, 4)}...${process.env.WHOP_CLIENT_ID.substring(process.env.WHOP_CLIENT_ID.length - 4)}` : 'N/A';
   const client_secret_log = process.env.WHOP_CLIENT_SECRET ? `${process.env.WHOP_CLIENT_SECRET.substring(0, 4)}...${process.env.WHOP_CLIENT_SECRET.substring(process.env.WHOP_CLIENT_SECRET.length - 4)}` : 'N/A';
-  const redirect_uri_log = 'https://whop-dms.vercel.app/api/whop/install'; // This is hardcoded in the body
   const basicAuthString = Buffer.from(`${process.env.WHOP_CLIENT_ID!}:${process.env.WHOP_CLIENT_SECRET!}`).toString('base64');
   const maskedBasicAuthString = basicAuthString ? `${basicAuthString.substring(0, 8)}...${basicAuthString.substring(basicAuthString.length - 8)}` : 'N/A';
-  console.log(`[WHOP_INSTALL] Attempting token exchange with: client_id=${client_id_log}, client_secret=${client_secret_log}, redirect_uri=${redirect_uri_log}, Basic Auth Header (masked): Basic ${maskedBasicAuthString}`);
+  console.log(`[WHOP_INSTALL] Attempting token exchange with: client_id=${client_id_log}, client_secret=${client_secret_log}, redirect_uri=${REDIRECT_URI}, Basic Auth Header (masked): Basic ${maskedBasicAuthString}`);
 
   const tokenResponse = await fetch('https://whop.com/api/v2/oauth/token', {
     method: 'POST',
@@ -50,7 +51,7 @@ export default async function handler(
     body: new URLSearchParams({
       grant_type: 'authorization_code',
       code: code, // the authorization code from URL params
-      redirect_uri: 'https://whop-dms.vercel.app/api/whop/install'
+      redirect_uri: REDIRECT_URI
     })
   });
 
