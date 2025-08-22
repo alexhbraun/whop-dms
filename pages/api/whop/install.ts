@@ -38,13 +38,11 @@ export default async function handler(
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      // CRITICAL: Do NOT add Authorization header here
+      'Authorization': `Basic ${Buffer.from(`${process.env.WHOP_CLIENT_ID!}:${process.env.WHOP_CLIENT_SECRET!}`).toString('base64')}`,
     },
     body: new URLSearchParams({
       grant_type: 'authorization_code',
       code: code, // the authorization code from URL params
-      client_id: process.env.WHOP_CLIENT_ID!,
-      client_secret: process.env.WHOP_CLIENT_SECRET!,
       redirect_uri: 'https://whop-dms.vercel.app/api/whop/install'
     })
   });
