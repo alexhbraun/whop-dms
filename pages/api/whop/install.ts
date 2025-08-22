@@ -3,8 +3,6 @@ import type { NextApiRequest, NextApiResponse } from "next";
 // --- Response Types ---
 type SuccessResponse = {
   ok: true;
-  meStatus: number;
-  me: any;
 };
 
 type ErrorResponse = {
@@ -13,78 +11,81 @@ type ErrorResponse = {
   diagnostics: ExchangeDiag[];
 };
 
+const TOKEN_ENDPOINTS = [
+  // 1) Canonical Doorkeeper path on API host (most likely)
+  "https://api.whop.com/oauth/token",
+  // 2) Same host with trailing slash
+  "https://api.whop.com/oauth/token/",
+  // 3) Legacy/canonical path on main host
+  "https://whop.com/oauth/token",
+  "https://whop.com/oauth/token/",
+  // 4) Last resort: the api/v2 proxy (what we used before, often wrong)
+  "https://whop.com/api/v2/oauth/token",
+  "https://whop.com/api/v2/oauth/token/",
+];
+
 type ExchangeDiag = {
-  attempt: string;
+  endpoint: string;
+  variant: "body" | "basic";
   status: number;
   headers: Record<string, string>;
   rawBody: string;
+  note?: string;
   error?: string;
 };
 
-function b64(s: string) {
-  return Buffer.from(s, 'ascii').toString('base64');
-}
-
-function toForm(body: Record<string, string>) {
-  return new URLSearchParams(body).toString();
-}
-
-async function postForm(url: string, form: Record<string, string>, extraHeaders?: HeadersInit) {
+async function postFormAbs(url: string, form: Record<string, string>, headers?: HeadersInit) {
   const body = new URLSearchParams(form);
-  return fetch(url, {
+  let res = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-      ...extraHeaders,
-    },
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json", ...headers },
     body,
+    redirect: "manual",
   });
+
+  // follow one manual redirect (e.g., 308) and normalize relative Location
+  if ([301, 302, 307, 308].includes(res.status)) {
+    const loc = res.headers.get("location") || "";
+    const next = new URL(loc, url).toString();
+    res = await fetch(next, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json", ...headers },
+      body,
+    });
+    return { res, followedTo: next };
+  }
+  return { res, followedTo: undefined as string | undefined };
 }
 
-const TOKEN_URL = "https://whop.com/api/v2/oauth/token";
+async function tryOneEndpoint(endpoint: string, code: string, redirectUri: string): Promise<{
+  ok: boolean;
+  token?: any;
+  diags: ExchangeDiag[];
+}> {
+  const diags: ExchangeDiag[] = [];
+  const id = process.env.WHOP_CLIENT_ID ?? "";
+  const secret = process.env.WHOP_CLIENT_SECRET ?? "";
+  const form = { grant_type: "authorization_code", code, redirect_uri: redirectUri };
 
-async function exchangeCodeForToken(code: string, redirectUri: string): Promise<
-  | { ok: true; token: any; diagnostics: ExchangeDiag[] }
-  | { ok: false; diagnostics: ExchangeDiag[] }
-> {
-  const diagnostics: ExchangeDiag[] = [];
-
-  // prefer body params (recommended)
-  const form = {
-    grant_type: "authorization_code",
-    code,
-    redirect_uri: redirectUri,
-    client_id: process.env.WHOP_CLIENT_ID ?? "",
-    client_secret: process.env.WHOP_CLIENT_SECRET ?? "",
-  };
-
+  // A) client_id + client_secret in body
+  const bodyForm = { ...form, client_id: id, client_secret: secret };
   try {
-    // 1) direct POST to absolute URL
-    let res = await postForm(TOKEN_URL, form);
-    if (res.status === 308 || res.status === 307 || res.status === 301 || res.status === 302) {
-      // follow redirect using absolute URL (if Location is relative)
-      const loc = res.headers.get("location") ?? "";
-      const nextUrl = new URL(loc, TOKEN_URL).toString();
-      res = await postForm(nextUrl, form);
-    }
-
-    const text = await res.text();
-    diagnostics.push({
-      attempt: "Token Exchange (body)",
+    const { res, followedTo } = await postFormAbs(endpoint, bodyForm);
+    const txt = await res.text();
+    diags.push({
+      endpoint: followedTo ?? endpoint,
+      variant: "body",
       status: res.status,
       headers: Object.fromEntries(res.headers.entries()),
-      rawBody: text,
+      rawBody: txt,
+      note: followedTo ? `followed redirect from ${endpoint}` : undefined,
       error: res.ok ? undefined : "HTTP not ok",
     });
-
-    if (res.ok) {
-      const json = JSON.parse(text);
-      return { ok: true, token: json, diagnostics };
-    }
+    if (res.ok) return { ok: true, token: JSON.parse(txt), diags };
   } catch (e: any) {
-    diagnostics.push({
-      attempt: "Token Exchange (body) (Network Error)",
+    diags.push({
+      endpoint,
+      variant: "body",
       status: 0,
       headers: {},
       rawBody: "",
@@ -92,34 +93,25 @@ async function exchangeCodeForToken(code: string, redirectUri: string): Promise<
     });
   }
 
-  // 2) fallback: HTTP Basic (also allowed) with only code+redirect_uri in body
+  // B) HTTP Basic; body without client credentials
   try {
-    const basic = Buffer.from(
-      `${process.env.WHOP_CLIENT_ID ?? ""}:${process.env.WHOP_CLIENT_SECRET ?? ""}`,
-      "ascii"
-    ).toString("base64");
-
-    const res = await postForm(
-      TOKEN_URL,
-      { grant_type: "authorization_code", code, redirect_uri: redirectUri },
-      { Authorization: `Basic ${basic}` }
-    );
-    const text = await res.text();
-    diagnostics.push({
-      attempt: "Token Exchange (basic)",
+    const basic = Buffer.from(`${id}:${secret}`, "ascii").toString("base64");
+    const { res, followedTo } = await postFormAbs(endpoint, form, { Authorization: `Basic ${basic}` });
+    const txt = await res.text();
+    diags.push({
+      endpoint: followedTo ?? endpoint,
+      variant: "basic",
       status: res.status,
       headers: Object.fromEntries(res.headers.entries()),
-      rawBody: text,
+      rawBody: txt,
+      note: followedTo ? `followed redirect from ${endpoint}` : undefined,
       error: res.ok ? undefined : "HTTP not ok",
     });
-
-    if (res.ok) {
-      const json = JSON.parse(text);
-      return { ok: true, token: json, diagnostics };
-    }
+    if (res.ok) return { ok: true, token: JSON.parse(txt), diags };
   } catch (e: any) {
-    diagnostics.push({
-      attempt: "Token Exchange (basic) (Network Error)",
+    diags.push({
+      endpoint,
+      variant: "basic",
       status: 0,
       headers: {},
       rawBody: "",
@@ -127,7 +119,17 @@ async function exchangeCodeForToken(code: string, redirectUri: string): Promise<
     });
   }
 
-  return { ok: false, diagnostics };
+  return { ok: false, diags };
+}
+
+async function exchangeCodeForTokenMulti(code: string, redirectUri: string) {
+  const all: ExchangeDiag[] = [];
+  for (const ep of TOKEN_ENDPOINTS) {
+    const r = await tryOneEndpoint(ep, code, redirectUri);
+    all.push(...r.diags);
+    if (r.ok) return { ok: true as const, token: r.token, endpoint: ep, diagnostics: all };
+  }
+  return { ok: false as const, diagnostics: all };
 }
 
 // --- Main Handler ---
@@ -147,61 +149,26 @@ export default async function handler(
 
   const client_id = process.env.WHOP_CLIENT_ID;
   const client_secret = process.env.WHOP_CLIENT_SECRET;
-  const redirect_uri = process.env.WHOP_REDIRECT_URI ?? `${process.env.APP_BASE_URL}/api/whop/install`;
+  const redirectUri = process.env.WHOP_REDIRECT_URI ?? `${process.env.APP_BASE_URL}/api/whop/install`;
 
   if (!client_id || !client_secret) {
     console.error("[WHOP_INSTALL] Missing required environment variables: WHOP_CLIENT_ID or WHOP_CLIENT_SECRET");
     return res.status(500).json({
       ok: false,
       reason: "server_config_error",
-      diagnostics: [{ attempt: "Env Check", status: 500, headers: {}, rawBody: "Missing credentials",
+      diagnostics: [{ endpoint: "Env Check", variant: "body", status: 500, headers: {}, rawBody: "Missing credentials",
         error: "Missing WHOP_CLIENT_ID or WHOP_CLIENT_SECRET" }],
     });
   }
 
-  const result = await exchangeCodeForToken(code, redirect_uri);
+  const xr = await exchangeCodeForTokenMulti(code, redirectUri);
 
-  console.log("[WHOP_INSTALL] exchange result", JSON.stringify(result, null, 2));
+  console.log("[WHOP_INSTALL] exchange summary", JSON.stringify(xr, null, 2));
 
-  if (!result.ok) {
-    console.error("[WHOP_INSTALL] Token exchange error:", result);
-    return res.status(500).json({ ok: false, reason: "token_exchange_failed", diagnostics: result.diagnostics });
+  if (!xr.ok) {
+    return res.status(500).json({ ok: false, reason: "token_exchange_failed", diagnostics: xr.diagnostics });
   }
 
-  // If you want, verify the token by calling /me (optional):
-  const meUrl = "https://whop.com/api/v2/me";
-  const meRes = await fetch(meUrl, {
-    headers: { Authorization: `Bearer ${result.token.access_token}` }
-  });
-  const meText = await meRes.text();
-  
-  let me: any;
-  try {
-    me = JSON.parse(meText);
-  } catch {
-    console.error("[WHOP_INSTALL] /me endpoint returned non-JSON:", meText);
-    return res.status(500).json({
-      ok: false,
-      reason: "me_endpoint_non_json",
-      diagnostics: [
-        ...result.diagnostics,
-        { attempt: "/me (JSON Parse Error)", status: meRes.status, headers: Object.fromEntries(meRes.headers.entries()), rawBody: meText, error: "Non-JSON response" }
-      ]
-    });
-  }
-
-  if (!meRes.ok) {
-    console.error("[WHOP_INSTALL] /me endpoint call failed:", meText);
-    return res.status(meRes.status).json({
-      ok: false,
-      reason: "me_endpoint_failed",
-      diagnostics: [
-        ...result.diagnostics,
-        { attempt: "/me (API Error)", status: meRes.status, headers: Object.fromEntries(meRes.headers.entries()), rawBody: meText, error: me.error || "Unknown error" }
-      ]
-    });
-  }
-
-  // Return success (keep payload simple to satisfy types)
-  return res.status(200).json({ ok: true, meStatus: meRes.status, me });
+  // success
+  return res.status(200).json({ ok: true });
 }
