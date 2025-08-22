@@ -32,27 +32,34 @@ const DashboardSettings = () => {
     const { community_id } = router.query;
     if (typeof community_id !== 'string' || !community_id) {
       setError('Community ID not found.');
+      console.error('[DashboardSettings] Community ID not found or invalid:', community_id);
       return;
     }
 
     try {
-      const updatedSettings = await updateCommunitySettings(community_id, {
-        logo_url: logoUrl,
-        primary_color: primaryColor,
-        secondary_color: secondaryColor,
-        welcome_message_title: welcomeMessageTitle,
-        welcome_message_body: welcomeMessageBody,
-      });
+      const settingsToUpdate = {
+        logo_url: logoUrl || null,
+        primary_color: primaryColor || null,
+        secondary_color: secondaryColor || null,
+        welcome_message_title: welcomeMessageTitle || null,
+        welcome_message_body: welcomeMessageBody || null,
+      };
+      console.log('[DashboardSettings] Attempting to update settings for communityId:', community_id);
+      console.log('[DashboardSettings] Settings payload:', settingsToUpdate);
+
+      const updatedSettings = await updateCommunitySettings(community_id, settingsToUpdate);
 
       if (updatedSettings) {
+        console.log('[DashboardSettings] Settings saved successfully:', updatedSettings);
         setMessage('Settings saved successfully!');
         // Optionally, re-fetch settings in _app.tsx or update context directly
       } else {
-        setError('Failed to save settings.');
+        console.error('[DashboardSettings] Failed to save settings. updateCommunitySettings returned null.');
+        setError('Failed to save settings. Check Vercel logs for details.');
       }
     } catch (err) {
-      console.error('Error saving settings:', err);
-      setError('An unexpected error occurred.');
+      console.error('[DashboardSettings] An unexpected error occurred during save:', err);
+      setError('An unexpected error occurred. Check Vercel logs for details.');
     }
   };
 
