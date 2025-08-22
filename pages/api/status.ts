@@ -1,18 +1,13 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
-import { supabaseAdmin } from '../../lib/supabaseAdmin';
-import { whopConfig, logWhopConfigSummary } from '../../lib/whopConfig';
+import type { NextApiRequest, NextApiResponse } from "next";
 
-export default async function handler(_req: NextApiRequest, res: NextApiResponse) {
-  logWhopConfigSummary();
-
-  const { data: ping, error } = await supabaseAdmin.rpc('ping'); // optional if you have it
-  return res.status(200).json({
+export default function handler(_req: NextApiRequest, res: NextApiResponse) {
+  const id = process.env.WHOP_CLIENT_ID;
+  const sec = process.env.WHOP_CLIENT_SECRET;
+  const ru = process.env.WHOP_REDIRECT_URI;
+  res.json({
     ok: true,
-    env: {
-      APP_BASE_URL: whopConfig.APP_BASE_URL,
-      WHOP_REDIRECT_URI: `${whopConfig.APP_BASE_URL}/api/whop/install`,
-      mockDM: Boolean(whopConfig.mockDM),
-    },
-    db: error ? { ok: false, error: error.message } : { ok: true, ping },
+    WHOP_CLIENT_ID: id ? id.slice(0,4) + "…" : null,
+    WHOP_CLIENT_SECRET: sec ? true : false,
+    WHOP_REDIRECT_URI: ru || null,
   });
 }
