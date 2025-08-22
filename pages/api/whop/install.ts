@@ -1,136 +1,259 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
-type Ok = {
+// --- Response Types ---
+type DiagnosticEntry = {
+  attempt: string;
+  status: number;
+  headers: Record<string, string>;
+  rawBody: string;
+  error?: string;
+};
+
+type SuccessResponse = {
   ok: true;
-  access_token: string;
-  token_type?: string;
-  expires_in?: number;
-  refresh_token?: string;
-  scope?: string;
-  raw?: any;
+  meStatus: number;
+  me: any;
 };
 
-type Err = {
+type ErrorResponse = {
   ok: false;
-  error: string;
-  details?: any;
-  rawResponse?: string;
+  reason: string;
+  diagnostics: DiagnosticEntry[];
 };
 
-function mask(v: string | undefined, keep = 4) {
-  if (!v) return "";
-  if (v.length <= keep) return "*".repeat(v.length);
-  return v.slice(0, keep) + "…" + "*".repeat(Math.max(0, v.length - keep - 1));
+// --- Utility Functions ---
+function maskSecret(value: string | undefined, keep = 4): string {
+  if (!value) return "";
+  if (value.length <= keep) return "*".repeat(value.length);
+  return `${value.slice(0, keep)}...${value.slice(-keep)}`;
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse<Ok | Err>) {
-  if (req.method !== "GET") {
-    res.setHeader("Allow", "GET");
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+async function fetchWithRetries(
+  url: string,
+  options: RequestInit,
+  attemptName: string,
+  diagnostics: DiagnosticEntry[]
+): Promise<Response> {
+  let currentUrl = url;
+  let currentOptions = { ...options };
+  let attempt = 0;
+  const maxRedirects = 5;
+
+  while (attempt < maxRedirects) {
+    attempt++;
+    try {
+      const response = await fetch(currentUrl, { ...currentOptions, redirect: 'manual' });
+      const rawBody = (await response.text()).slice(0, 4000); // Capture first 4000 chars
+
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (location) {
+          console.log(`[WHOP_INSTALL] Following redirect (${response.status}) to: ${location}`);
+          currentUrl = location;
+          continue; // Retry with new URL
+        }
+      }
+
+      diagnostics.push({
+        attempt: `${attemptName} (HTTP ${response.status})`,
+        status: response.status,
+        headers,
+        rawBody,
+      });
+      return response;
+    } catch (e: any) {
+      const errorMsg = e?.message || String(e);
+      diagnostics.push({
+        attempt: `${attemptName} (Network Error)`,
+        status: 0,
+        headers: {},
+        rawBody: "",
+        error: errorMsg,
+      });
+      throw new Error(`Network error on ${attemptName}: ${errorMsg}`);
+    }
   }
+  throw new Error(`Exceeded max redirects (${maxRedirects}) for ${attemptName}`);
+}
 
-  const code = (req.query.code as string) || "";
-  const state = (req.query.state as string) || "";
-
-  const client_id = process.env.WHOP_CLIENT_ID || "";
-  const client_secret = process.env.WHOP_CLIENT_SECRET || "";
-  const redirect_uri = process.env.WHOP_REDIRECT_URI || "https://whop-dms.vercel.app/api/whop/install";
-
-  if (!code) {
-    return res.status(400).json({ ok: false, error: "Missing ?code on callback" });
-  }
-  if (!client_id || !client_secret) {
-    return res.status(500).json({ ok: false, error: "Server missing WHOP_CLIENT_ID/WHOP_CLIENT_SECRET" });
-  }
-
-  // ===== TOKEN EXCHANGE =====
-  const tokenUrl = 'https://whop.com/api/v2/oauth/token'; // NOTE: no api.whop.com
+async function exchangeToken(
+  code: string,
+  redirect_uri: string,
+  client_id: string,
+  client_secret: string,
+  variant: 'body' | 'basic',
+  diagnostics: DiagnosticEntry[]
+): Promise<{ accessToken: string; refreshToken?: string; rawJson: any } | null> {
+  const tokenEndpoint = 'https://whop.com/api/v2/oauth/token';
   const form = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
     redirect_uri,
-    client_id,
-    client_secret,
   });
 
-  // Basic auth (belt-and-suspenders; harmless if Whop doesn’t require it)
-  const basic = Buffer.from(`${client_id}:${client_secret}`, "ascii").toString("base64");
+  const options: RequestInit = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+  };
 
-  console.log("[WHOP_INSTALL] start", {
-    state,
-    redirect_uri,
-    client_id: mask(client_id),
-    hasSecret: !!client_secret,
-    url: tokenUrl
-  });
+  if (variant === 'body') {
+    form.set('client_id', client_id);
+    form.set('client_secret', client_secret);
+    options.body = form.toString();
+  } else {
+    const basicAuth = Buffer.from(`${client_id}:${client_secret}`).toString('base64');
+    options.headers = { ...options.headers, 'Authorization': `Basic ${basicAuth}` };
+    options.body = form.toString();
+  }
 
-  let text: string;
-  let resp: Response;
+  console.log(`[WHOP_INSTALL] Attempting token exchange (variant: ${variant})`,
+    { client_id: maskSecret(client_id), redirect_uri });
+
   try {
-    resp = await fetch(tokenUrl, {
-      method: "POST",
-      headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Authorization": `Basic ${basic}`,
-      },
-      body: form.toString(),
-    });
-    text = await resp.text();
+    const resp = await fetchWithRetries(tokenEndpoint, options, `Token Exchange (${variant})`, diagnostics);
+    const rawText = await resp.text();
+
+    let json: any;
+    try {
+      json = JSON.parse(rawText);
+    } catch {
+      console.error(`[WHOP_INSTALL] Token exchange (${variant}) non-JSON response:`, rawText.slice(0, 200));
+      diagnostics.push({
+        attempt: `Token Exchange (${variant}) - JSON Parse Error`,
+        status: resp.status,
+        headers: Object.fromEntries(resp.headers.entries()),
+        rawBody: rawText.slice(0, 4000),
+        error: "Non-JSON response received",
+      });
+      return null;
+    }
+
+    if (!resp.ok || !json?.access_token) {
+      console.error(`[WHOP_INSTALL] Token exchange (${variant}) failed:`, json);
+      diagnostics.push({
+        attempt: `Token Exchange (${variant}) - API Error`,
+        status: resp.status,
+        headers: Object.fromEntries(resp.headers.entries()),
+        rawBody: rawText.slice(0, 4000),
+        error: json?.error_description || json?.error || "Unknown API error",
+      });
+      return null;
+    }
+
+    console.log(`[WHOP_INSTALL] Token exchange (${variant}) successful.`);
+    return { accessToken: json.access_token, refreshToken: json.refresh_token, rawJson: json };
   } catch (e: any) {
-    console.error("[WHOP_INSTALL] network error", e?.message || e);
-    return res.status(502).json({ ok: false, error: "Network error contacting Whop token endpoint", details: String(e) });
+    console.error(`[WHOP_INSTALL] Token exchange (${variant}) unhandled error:`, e);
+    return null; // Error already pushed to diagnostics in fetchWithRetries
   }
+}
 
-  // Try to parse JSON; if it fails, return the raw body for debugging
-  let json: any = null;
+async function verifyToken(
+  accessToken: string,
+  diagnostics: DiagnosticEntry[]
+): Promise<{ status: number; me: any } | null> {
+  const meEndpoint = 'https://whop.com/api/v2/me';
+  console.log('[WHOP_INSTALL] Verifying token with /me endpoint');
+
   try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    console.error("[WHOP_INSTALL] non-JSON token response", { status: resp.status, text });
-    return res
-      .status(502)
-      .json({ ok: false, error: "Failed to parse token response from Whop (non‑JSON).", rawResponse: text ?? "" });
+    const resp = await fetchWithRetries(meEndpoint, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+    }, 'Token Verification', diagnostics);
+    const rawText = await resp.text();
+
+    let meJson: any;
+    try {
+      meJson = JSON.parse(rawText);
+    } catch {
+      console.error('[WHOP_INSTALL] /me non-JSON response:', rawText.slice(0, 200));
+      diagnostics.push({
+        attempt: 'Token Verification - JSON Parse Error',
+        status: resp.status,
+        headers: Object.fromEntries(resp.headers.entries()),
+        rawBody: rawText.slice(0, 4000),
+        error: "Non-JSON response received from /me",
+      });
+      return null;
+    }
+
+    if (!resp.ok) {
+      console.error('[WHOP_INSTALL] /me call failed:', meJson);
+      diagnostics.push({
+        attempt: 'Token Verification - API Error',
+        status: resp.status,
+        headers: Object.fromEntries(resp.headers.entries()),
+        rawBody: rawText.slice(0, 4000),
+        error: meJson?.error_description || meJson?.error || "Unknown /me API error",
+      });
+      return null;
+    }
+
+    console.log('[WHOP_INSTALL] Token verification successful.');
+    return { status: resp.status, me: meJson };
+  } catch (e: any) {
+    console.error('[WHOP_INSTALL] Token verification unhandled error:', e);
+    return null; // Error already pushed to diagnostics in fetchWithRetries
+  }
+}
+
+// --- Main Handler ---
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse<SuccessResponse | ErrorResponse>
+) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
+    return res.status(405).json({ ok: false, reason: 'method_not_allowed', diagnostics: [] });
   }
 
-  // If HTTP not OK, surface Whop error payload
-  if (!resp.ok) {
-    console.error("[WHOP_INSTALL] token exchange failed", { status: resp.status, body: json });
-    return res.status(resp.status).json({
+  const code = req.query.code as string | undefined;
+  if (!code) {
+    return res.status(400).json({ ok: false, reason: 'missing_code', diagnostics: [] });
+  }
+
+  const client_id = process.env.WHOP_CLIENT_ID;
+  const client_secret = process.env.WHOP_CLIENT_SECRET;
+  const redirect_uri = "https://whop-dms.vercel.app/api/whop/install";
+
+  if (!client_id || !client_secret) {
+    console.error("[WHOP_INSTALL] Missing required environment variables: WHOP_CLIENT_ID or WHOP_CLIENT_SECRET");
+    return res.status(500).json({
       ok: false,
-      error: json?.error?.message || json?.message || "Token exchange failed",
-      details: json
+      reason: "server_config_error",
+      diagnostics: [{ attempt: "Env Check", status: 500, headers: {}, rawBody: "Missing credentials",
+        error: "Missing WHOP_CLIENT_ID or WHOP_CLIENT_SECRET" }],
     });
   }
 
-  const {
-    access_token,
-    token_type,
-    expires_in,
-    refresh_token,
-    scope
-  } = json || {};
+  const diagnostics: DiagnosticEntry[] = [];
+  let tokenExchangeResult: { accessToken: string; refreshToken?: string; rawJson: any } | null = null;
+  let meVerificationResult: { status: number; me: any } | null = null;
 
-  if (!access_token) {
-    console.error("[WHOP_INSTALL] success response missing access_token", json);
-    return res.status(502).json({ ok: false, error: "Whop response missing access_token", details: json });
+  // Attempt Variant A: body creds
+  tokenExchangeResult = await exchangeToken(code, redirect_uri, client_id, client_secret, 'body', diagnostics);
+
+  // If Variant A failed, attempt Variant B: basic auth
+  if (!tokenExchangeResult) {
+    tokenExchangeResult = await exchangeToken(code, redirect_uri, client_id, client_secret, 'basic', diagnostics);
   }
 
-  // TODO: Persist token (Supabase etc.). For now, just echo success.
-  console.log("[WHOP_INSTALL] success", {
-    token_type,
-    expires_in,
-    scope,
-    gotRefresh: !!refresh_token
-  });
+  if (tokenExchangeResult) {
+    // If token exchange succeeded, verify the token
+    meVerificationResult = await verifyToken(tokenExchangeResult.accessToken, diagnostics);
+  }
 
-  return res.status(200).json({
-    ok: true,
-    access_token,
-    token_type,
-    expires_in,
-    refresh_token,
-    scope,
-    raw: json
-  });
+  if (tokenExchangeResult && meVerificationResult) {
+    // Both token exchange and verification succeeded
+    console.log("[WHOP_INSTALL] OAuth flow successful.");
+    return res.status(200).json({ ok: true, meStatus: meVerificationResult.status, me: meVerificationResult.me });
+  } else {
+    // OAuth flow failed
+    console.error("[WHOP_INSTALL] OAuth flow failed with diagnostics:", JSON.stringify(diagnostics, null, 2));
+    return res.status(500).json({ ok: false, reason: "token_exchange_failed", diagnostics });
+  }
 }
