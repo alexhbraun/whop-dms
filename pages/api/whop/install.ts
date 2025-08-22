@@ -70,7 +70,7 @@ async function exchangeToken(code: string) {
     diagnostics.push({
       attempt: 'Token Exchange (body)',
       status: resA.status,
-      headers: Object.fromEntries([...resA.headers].slice(0, 20)),
+      headers: Object.fromEntries(Array.from(resA.headers.entries()).slice(0, 20)),
       rawBody: (textA || '').slice(0, 500)
     });
     if (resA.ok && jsonA?.access_token) {
@@ -101,7 +101,7 @@ async function exchangeToken(code: string) {
     diagnostics.push({
       attempt: 'Token Exchange (basic)',
       status: resB.status,
-      headers: Object.fromEntries([...resB.headers].slice(0, 20)),
+      headers: Object.fromEntries(Array.from(resB.headers.entries()).slice(0, 20)),
       rawBody: (textB || '').slice(0, 500)
     });
     if (resB.ok && jsonB?.access_token) {
