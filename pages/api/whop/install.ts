@@ -34,6 +34,11 @@ export default async function handler(
   }
 
   // CORRECT - NO Authorization header for token exchange
+  const client_id_log = process.env.WHOP_CLIENT_ID ? `${process.env.WHOP_CLIENT_ID.substring(0, 4)}...${process.env.WHOP_CLIENT_ID.substring(process.env.WHOP_CLIENT_ID.length - 4)}` : 'N/A';
+  const client_secret_log = process.env.WHOP_CLIENT_SECRET ? `${process.env.WHOP_CLIENT_SECRET.substring(0, 4)}...${process.env.WHOP_CLIENT_SECRET.substring(process.env.WHOP_CLIENT_SECRET.length - 4)}` : 'N/A';
+  const redirect_uri_log = 'https://whop-dms.vercel.app/api/whop/install'; // This is hardcoded in the body
+  console.log(`[WHOP_INSTALL] Attempting token exchange with: client_id=${client_id_log}, client_secret=${client_secret_log}, redirect_uri=${redirect_uri_log}`);
+
   const tokenResponse = await fetch('https://whop.com/api/v2/oauth/token', {
     method: 'POST',
     headers: {
