@@ -1,4 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { sendWhopDM } from "../../../lib/whopClient";
+import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 
 type SuccessResponse = {
   ok: true;
@@ -73,6 +75,77 @@ export default async function handler(
   const tokenData = JSON.parse(responseBody);
   console.log('Token received:', tokenData.access_token ? 'YES' : 'NO');
 
-  // Return success
-  return res.status(200).json({ ok: true });
+  if (!tokenData.access_token) {
+    console.error('[WHOP_INSTALL] Token exchange did not return an access_token.', tokenData);
+    return res.status(500).json({ ok: false, error: 'Token exchange failed: No access token.', body: responseBody });
+  }
+
+  // --- 2. Fetch Creator Profile ---
+  console.log('[WHOP_INSTALL] Fetching creator profile...');
+  const meResponse = await fetch('https://whop.com/api/v2/me', {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${tokenData.access_token}`,
+    },
+  });
+
+  const meData = await meResponse.json();
+  console.log('[WHOP_INSTALL] Whop /v2/me response:', meData);
+
+  if (!meResponse.ok || !meData.member || !meData.member.id || !meData.member.community_id) {
+    console.error('[WHOP_INSTALL] Failed to fetch creator profile or missing required data.', meData);
+    return res.status(500).json({
+      ok: false,
+      error: 'Failed to retrieve creator profile or community info.',
+      status: meResponse.status,
+      body: JSON.stringify(meData),
+    });
+  }
+
+  const memberId = meData.member.id;
+  const communityId = meData.member.community_id;
+  const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString(); // Calculate expiry
+
+  // --- 3. Save Installation Data to Supabase ---
+  console.log('[WHOP_INSTALL] Saving installation data to Supabase...');
+  const { data: installData, error: installError } = await supabaseAdmin
+    .from('whop_installations')
+    .upsert(
+      {
+        community_id: communityId,
+        member_id: memberId,
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token,
+        expires_at: expiresAt,
+      },
+      { onConflict: 'member_id', ignoreDuplicates: false }
+    )
+    .select('*')
+    .single();
+
+  if (installError) {
+    console.error('[WHOP_INSTALL] Supabase installation save error:', installError);
+    return res.status(500).json({ ok: false, error: 'Failed to save installation data.' });
+  }
+  console.log('[WHOP_INSTALL] Installation data saved to Supabase.', installData);
+
+  // --- 4. Construct and Send Questions via Whop DM ---
+  const questionsMessage = `Welcome to the community! To help us get to know you better, please answer a few questions:\n\n1. What's your #1 goal?\n2. What would make this community a win for you?\n3. Anything else?`;
+
+  console.log(`[WHOP_INSTALL] Sending welcome DM to member ${memberId}...`);
+  const dmResult = await sendWhopDM({
+    toMemberId: memberId,
+    text: questionsMessage,
+  });
+
+  if (!dmResult.ok) {
+    console.error('[WHOP_INSTALL] Failed to send welcome DM:', dmResult.error);
+    // Decide if this should be a fatal error or just logged
+  }
+  console.log('[WHOP_INSTALL] Welcome DM send result:', dmResult);
+
+  // --- 5. Redirect ---
+  console.log('[WHOP_INSTALL] Redirecting to dashboard...');
+  res.setHeader('Location', `/dashboard/settings?installed=1&community_id=${communityId}`);
+  return res.status(302).json({ ok: true });
 }
