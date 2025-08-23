@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import toast from 'react-hot-toast';
+import toast, { Toaster } from 'react-hot-toast';
+import { DMTemplate, DMTemplateStep } from '../api/dm-templates'; // Import DMTemplate types
 
-interface Settings {
+interface AppSettings {
   requireEmail?: boolean;
   forwardWebhookUrl?: string;
   // Add other settings here as needed
@@ -11,25 +12,62 @@ interface Settings {
 export default function WhopSettingsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [settings, setSettings] = useState<Settings>({});
+  const [appSettings, setAppSettings] = useState<AppSettings>({}); // Renamed to appSettings
   const [token, setToken] = useState<string | null>(null);
+  const [communityId, setCommunityId] = useState<string | null>(null);
+
+  // State for DM Templates
+  const [dmTemplates, setDmTemplates] = useState<DMTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState<DMTemplate | null>(null);
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const [isTemplateSaving, setIsTemplateSaving] = useState(false);
 
   useEffect(() => {
-    // In a real app, you'd get the token from an auth context or URL param
-    // For this example, let's assume token is passed via query for simplicity/testing
-    const { token: queryToken } = router.query;
+    const { token: queryToken, community_id: queryCommunityId } = router.query;
+
     if (typeof queryToken === 'string' && queryToken) {
       setToken(queryToken);
-      // In a real app, you'd fetch current settings here first using this token
-      // fetchSettings(queryToken);
     } else {
-      // No token, maybe redirect to an error or login page
-      setLoading(false);
-      toast.error('Missing authentication token.');
+      // setLoading(false);
+      // toast.error('Missing authentication token.');
     }
+
+    if (typeof queryCommunityId === 'string' && queryCommunityId) {
+      setCommunityId(queryCommunityId);
+    } else {
+      // setLoading(false);
+      // toast.error('Missing community ID.');
+    }
+
+    // Fetch app settings (example, would need API route)
+    // if (token) { fetchAppSettings(token); }
+
+    // Fetch DM templates
+    if (queryCommunityId) {
+      fetchDmTemplates(queryCommunityId as string);
+    }
+
+    setLoading(false);
   }, [router.query]);
 
-  const handleSave = async () => {
+  const fetchDmTemplates = async (id: string) => {
+    try {
+      const res = await fetch(`/api/dm-templates?community_id=${id}`);
+      const data = await res.json();
+      if (data.success && data.data) {
+        setDmTemplates(data.data);
+      } else {
+        console.error('Failed to fetch DM templates:', data.error);
+        toast.error('Failed to load DM templates.');
+      }
+    } catch (error) {
+      console.error('Error fetching DM templates:', error);
+      toast.error('Error loading DM templates.');
+    }
+  };
+
+  const handleSaveAppSettings = async () => {
     if (!token) {
       toast.error('Authentication token is missing.');
       return;
@@ -42,7 +80,7 @@ export default function WhopSettingsPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ settings }),
+        body: JSON.stringify({ settings: appSettings }),
       });
 
       if (!res.ok) {
@@ -50,57 +88,327 @@ export default function WhopSettingsPage() {
         throw new Error(errorData.message || 'Failed to save settings.');
       }
 
-      toast.success('Settings saved successfully!');
+      toast.success('App Settings saved successfully!');
     } catch (e: any) {
-      console.error('Error saving settings:', e);
-      toast.error(e.message || 'Error saving settings.');
+      console.error('Error saving app settings:', e);
+      toast.error(e.message || 'Error saving app settings.');
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading && !token) {
-    return <div className="container mx-auto p-4">Loading...</div>;
+  // DM Template Handlers
+  const handleAddStep = () => {
+    if (editingTemplate) {
+      setEditingTemplate({
+        ...editingTemplate,
+        steps: [
+          ...editingTemplate.steps,
+          { step_order: editingTemplate.steps.length + 1, question_text: '', require_email: false, response_type: 'short_text' },
+        ],
+      });
+    }
+  };
+
+  const handleStepChange = (index: number, field: keyof DMTemplateStep, value: any) => {
+    if (editingTemplate) {
+      const newSteps = [...editingTemplate.steps];
+      newSteps[index] = { ...newSteps[index], [field]: value };
+      setEditingTemplate({ ...editingTemplate, steps: newSteps });
+    }
+  };
+
+  const handleRemoveStep = (index: number) => {
+    if (editingTemplate) {
+      const newSteps = editingTemplate.steps.filter((_, i) => i !== index);
+      setEditingTemplate({ ...editingTemplate, steps: newSteps.map((step, i) => ({ ...step, step_order: i + 1 })) });
+    }
+  };
+
+  const handleSaveDmTemplate = async () => {
+    if (!editingTemplate || !communityId) return;
+
+    setIsTemplateSaving(true);
+    try {
+      const method = editingTemplate.id ? 'PUT' : 'POST';
+      const url = editingTemplate.id
+        ? `/api/dm-templates?community_id=${communityId}&id=${editingTemplate.id}`
+        : `/api/dm-templates?community_id=${communityId}`;
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingTemplate),
+      });
+
+      const data = await res.json();
+
+      if (data.success && data.data) {
+        toast.success('DM Template saved successfully!');
+        setEditingTemplate(null); // Close editor
+        fetchDmTemplates(communityId); // Refresh list
+      } else {
+        throw new Error(data.error || 'Failed to save DM Template.');
+      }
+    } catch (e: any) {
+      console.error('Error saving DM template:', e);
+      toast.error(e.message || 'Error saving DM template.');
+    } finally {
+      setIsTemplateSaving(false);
+    }
+  };
+
+  const handleCreateNewTemplate = async () => {
+    if (!newTemplateName || !communityId) return;
+
+    setIsTemplateSaving(true);
+    try {
+      const res = await fetch(`/api/dm-templates?community_id=${communityId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newTemplateName,
+          steps: [], // Start with no steps
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        toast.success('New DM Template created!');
+        setNewTemplateName('');
+        setEditingTemplate(data.data);
+        fetchDmTemplates(communityId); // Refresh list
+      } else {
+        throw new Error(data.error || 'Failed to create DM Template.');
+      }
+    } catch (e: any) {
+      console.error('Error creating DM template:', e);
+      toast.error(e.message || 'Error creating DM Template.');
+    } finally {
+      setIsTemplateSaving(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (templateIdToDelete: number) => {
+    if (!communityId || !confirm('Are you sure you want to delete this template?')) return;
+
+    setLoading(true); // Use global loading for this for simplicity
+    try {
+      const res = await fetch(`/api/dm-templates?community_id=${communityId}&id=${templateIdToDelete}`, {
+        method: 'DELETE',
+      });
+
+      if (res.ok) {
+        toast.success('DM Template deleted!');
+        fetchDmTemplates(communityId);
+        if (selectedTemplateId === templateIdToDelete) setSelectedTemplateId(null);
+        if (editingTemplate?.id === templateIdToDelete) setEditingTemplate(null);
+      } else {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to delete DM Template.');
+      }
+    } catch (e: any) {
+      console.error('Error deleting DM template:', e);
+      toast.error(e.message || 'Error deleting DM Template.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectTemplate = (template: DMTemplate) => {
+    setSelectedTemplateId(template.id);
+    setEditingTemplate({ ...template }); // Clone for editing
+  };
+
+  if (loading || !communityId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-neutral-50">
+        <p className="text-neutral-600 text-lg">Loading app settings...</p>
+      </div>
+    );
   }
 
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">App Settings</h1>
-      <div className="bg-white shadow-md rounded-lg p-6">
-        <div className="mb-4">
-          <label className="inline-flex items-center">
+    <div className="min-h-screen bg-neutral-50 p-4 sm:p-6 lg:p-8">
+      <Toaster />
+      <main className="max-w-4xl mx-auto bg-white p-8 rounded-xl shadow-lg">
+        <h1 className="text-center text-4xl font-serif font-bold text-neutral-900 mb-8">App Settings</h1>
+
+        {/* General App Settings */}
+        <section className="mb-10 p-6 border border-neutral-200 rounded-lg shadow-sm bg-neutral-50">
+          <h2 className="text-2xl font-semibold text-neutral-800 mb-4">General Settings</h2>
+          <div className="space-y-4">
+            {/* Require Email Setting */}
+            <div>
+              <label htmlFor="requireEmail" className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="requireEmail"
+                  className="form-checkbox h-5 w-5 text-primary-600 rounded focus:ring-primary-500 transition duration-150 ease-in-out"
+                  checked={appSettings.requireEmail || false}
+                  onChange={(e) => setAppSettings({ ...appSettings, requireEmail: e.target.checked })}
+                />
+                <span className="ml-3 text-lg font-medium text-neutral-800">Require email for lead forms</span>
+              </label>
+              <p className="text-sm text-neutral-500 mt-2">If enabled, users will always be prompted for their email address in lead capture forms.</p>
+            </div>
+
+            {/* Webhook URL Setting */}
+            <div>
+              <label htmlFor="webhookUrl" className="block text-lg font-medium text-neutral-800 mb-2">
+                Forward leads to webhook URL:
+              </label>
+              <input
+                type="text"
+                id="webhookUrl"
+                value={appSettings.forwardWebhookUrl || ''}
+                onChange={(e) => setAppSettings({ ...appSettings, forwardWebhookUrl: e.target.value })}
+                placeholder="e.g., https://your-crm.com/webhook"
+              />
+              <p className="text-sm text-neutral-500 mt-2">All captured leads will be automatically forwarded to this endpoint.</p>
+            </div>
+
+            <button
+              onClick={handleSaveAppSettings}
+              disabled={loading}
+              className="btn w-full text-lg px-8 py-3 transform hover:scale-105 transition-transform duration-200 mt-6"
+            >
+              {loading ? 'Saving App Settings...' : 'Save App Settings'}
+            </button>
+          </div>
+        </section>
+
+        {/* DM Templates Management */}
+        <section className="p-6 border border-neutral-200 rounded-lg shadow-sm bg-neutral-50">
+          <h2 className="text-2xl font-semibold text-neutral-800 mb-4">DM Templates</h2>
+
+          {/* Create New Template */}
+          <div className="mb-6 p-4 border border-primary-200 rounded-lg bg-primary-50 flex flex-col sm:flex-row items-center gap-4">
             <input
-              type="checkbox"
-              className="form-checkbox h-5 w-5 text-blue-600"
-              checked={settings.requireEmail || false}
-              onChange={(e) => setSettings({ ...settings, requireEmail: e.target.checked })}
+              type="text"
+              placeholder="New Template Name"
+              value={newTemplateName}
+              onChange={(e) => setNewTemplateName(e.target.value)}
+              className="flex-grow"
             />
-            <span className="ml-2 text-gray-700">Require email for lead forms</span>
-          </label>
-        </div>
+            <button
+              onClick={handleCreateNewTemplate}
+              disabled={isTemplateSaving || !newTemplateName}
+              className="btn bg-primary-600 hover:bg-primary-700 whitespace-nowrap"
+            >
+              {isTemplateSaving ? 'Creating...' : 'Create New Template'}
+            </button>
+          </div>
 
-        <div className="mb-4">
-          <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="webhookUrl">
-            Forward leads to webhook URL:
-          </label>
-          <input
-            type="text"
-            id="webhookUrl"
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-            value={settings.forwardWebhookUrl || ''}
-            onChange={(e) => setSettings({ ...settings, forwardWebhookUrl: e.target.value })}
-            placeholder="e.g., https://your-crm.com/webhook"
-          />
-        </div>
+          {/* Template List */}
+          {dmTemplates.length === 0 && !editingTemplate ? (
+            <p className="text-neutral-600 text-center py-6">No DM templates found. Create one above!</p>
+          ) : (
+            <div className="space-y-3 mb-6">
+              {dmTemplates.map((template) => (
+                <div key={template.id} className="flex items-center justify-between p-4 border border-neutral-200 rounded-lg bg-white shadow-sm">
+                  <span className="text-lg font-medium text-neutral-800">{template.name}</span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleSelectTemplate(template)}
+                      className="btn-secondary text-sm px-3 py-1.5"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTemplate(template.id)}
+                      className="btn bg-red-600 hover:bg-red-700 text-sm px-3 py-1.5"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
-        <button
-          onClick={handleSave}
-          disabled={loading}
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-        >
-          {loading ? 'Saving...' : 'Save Settings'}
-        </button>
-      </div>
+          {/* Template Editor */}
+          {editingTemplate && (
+            <div className="mt-8 p-6 border border-primary-300 rounded-lg shadow-md bg-primary-50">
+              <h3 className="text-xl font-semibold text-primary-800 mb-4">Editing Template: {editingTemplate.name}</h3>
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-primary-700 text-sm font-medium mb-2">Template Name:</label>
+                  <input
+                    type="text"
+                    value={editingTemplate.name}
+                    onChange={(e) => setEditingTemplate({ ...editingTemplate, name: e.target.value })}
+                  />
+                </div>
+                <h4 className="text-lg font-semibold text-primary-700 mt-6 mb-3">DM Steps/Questions:</h4>
+                {editingTemplate.steps.length === 0 ? (
+                  <p className="text-neutral-600">No steps defined yet. Add your first question!</p>
+                ) : (
+                  <div className="space-y-4">
+                    {editingTemplate.steps.map((step, index) => (
+                      <div key={index} className="p-4 border border-primary-200 rounded-lg bg-white shadow-sm">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-md font-medium text-neutral-800">Step {step.step_order}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveStep(index)}
+                            className="text-red-600 hover:text-red-800 text-sm"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-neutral-700 text-sm font-medium mb-1">Question Text:</label>
+                            <textarea
+                              value={step.question_text}
+                              onChange={(e) => handleStepChange(index, 'question_text', e.target.value)}
+                              rows={2}
+                            />
+                          </div>
+                          <label className="flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={step.require_email || false}
+                              onChange={(e) => handleStepChange(index, 'require_email', e.target.checked)}
+                              className="form-checkbox h-4 w-4 text-primary-600 rounded focus:ring-primary-500"
+                            />
+                            <span className="ml-2 text-sm text-neutral-700">Require Email (if applicable)</span>
+                          </label>
+                          {/* Future: Add response_type and options UI here */}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleAddStep}
+                  className="btn bg-primary-600 hover:bg-primary-700 mt-4"
+                >
+                  Add New Step
+                </button>
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setEditingTemplate(null)}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveDmTemplate}
+                  disabled={isTemplateSaving}
+                  className="btn bg-green-600 hover:bg-green-700"
+                >
+                  {isTemplateSaving ? 'Saving...' : 'Save Template'}
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+      </main>
     </div>
   );
 }

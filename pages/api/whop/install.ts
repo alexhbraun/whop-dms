@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { sendWhopDM } from "../../../lib/whopClient";
 import { supabaseAdmin } from "../../../lib/supabaseAdmin";
+import { DMTemplate, DMTemplateStep } from '../../api/dm-templates'; // Corrected import path and type
 
 type SuccessResponse = {
   ok: true;
@@ -130,7 +131,32 @@ export default async function handler(
   console.log('[WHOP_INSTALL] Installation data saved to Supabase.', installData);
 
   // --- 4. Construct and Send Questions via Whop DM ---
-  const questionsMessage = `Welcome to the community! To help us get to know you better, please answer a few questions:\n\n1. What's your #1 goal?\n2. What would make this community a win for you?\n3. Anything else?`;
+  let questionsMessage = `Welcome to the community! Please complete your onboarding by providing some details.`;
+
+  // Fetch DM templates for the community
+  const { data: dmTemplates, error: dmTemplatesError } = await supabaseAdmin
+    .from('dm_templates')
+    .select('*')
+    .eq('community_id', communityId)
+    .order('created_at', { ascending: true })
+    .limit(1);
+
+  if (dmTemplatesError) {
+    console.error('[WHOP_INSTALL] Error fetching DM templates:', dmTemplatesError);
+    // Proceed with default message if templates can't be fetched
+  } else if (dmTemplates && dmTemplates.length > 0) {
+    const template: DMTemplate = dmTemplates[0];
+    const templateQuestions = template.steps.map((step: DMTemplateStep, index: number) => {
+      let question = `${index + 1}. ${step.question_text}`;
+      if (step.require_email) {
+        question += ' (Email required)'; // Indicate email is required for this step
+      }
+      return question;
+    }).join('\n');
+    questionsMessage = `Welcome to the community! To help us get to know you better, please answer a few questions:\n\n${templateQuestions}\n\nThanks!`;
+  } else {
+    console.log('[WHOP_INSTALL] No custom DM templates found for community. Using default message.');
+  }
 
   console.log(`[WHOP_INSTALL] Sending welcome DM to member ${memberId}...`);
   const dmResult = await sendWhopDM({
