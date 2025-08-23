@@ -4,6 +4,7 @@ import { useCommunitySettings } from '../../pages/_app'; // Corrected import pat
 import { updateCommunitySettings } from '../../lib/supabaseUtils'; // Kept for updateCommunitySettings
 
 const DashboardSettings = () => {
+  console.log('[DashboardSettings] Component rendered.');
   const router = useRouter();
   const communitySettings = useCommunitySettings();
   const [logoUrl, setLogoUrl] = useState('');
@@ -26,6 +27,7 @@ const DashboardSettings = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('[DashboardSettings] Save button clicked, handleSubmit initiated.');
     setMessage('');
     setError('');
 
