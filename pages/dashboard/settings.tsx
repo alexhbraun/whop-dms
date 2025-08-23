@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { useCommunitySettings } from '../../pages/_app'; // Corrected import path for useCommunitySettings
-import { updateCommunitySettings } from '../../lib/supabaseUtils'; // Kept for updateCommunitySettings
+import { useCommunitySettings, CommunitySettings } from '../../pages/_app'; // Use the type from _app
+// import { updateCommunitySettings } from '../../lib/supabaseUtils'; // Removed direct import
 
 const DashboardSettings = () => {
   console.log('[DashboardSettings] Component rendered.');
@@ -49,15 +49,24 @@ const DashboardSettings = () => {
       console.log('[DashboardSettings] Attempting to update settings for communityId:', community_id);
       console.log('[DashboardSettings] Settings payload:', settingsToUpdate);
 
-      const updatedSettings = await updateCommunitySettings(community_id, settingsToUpdate);
+      // Call the API route instead of direct function
+      const res = await fetch(`/api/community/settings?community_id=${community_id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settingsToUpdate),
+      });
 
-      if (updatedSettings) {
-        console.log('[DashboardSettings] Settings saved successfully:', updatedSettings);
+      const data = await res.json();
+
+      if (data.success && data.settings) {
+        console.log('[DashboardSettings] Settings saved successfully:', data.settings);
         setMessage('Settings saved successfully!');
         // Optionally, re-fetch settings in _app.tsx or update context directly
       } else {
-        console.error('[DashboardSettings] Failed to save settings. updateCommunitySettings returned null.');
-        setError('Failed to save settings. Check Vercel logs for details.');
+        console.error('[DashboardSettings] Failed to save settings. API returned:', data.error);
+        setError(`Failed to save settings: ${data.error || 'Unknown error'}. Check Vercel logs for API details.`);
       }
     } catch (err) {
       console.error('[DashboardSettings] An unexpected error occurred during save:', err);
