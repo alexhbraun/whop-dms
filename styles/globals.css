@@ -41,7 +41,11 @@ select {
   @apply w-full p-3 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-primary-300 focus:border-primary-500 transition-all duration-200 shadow-sm bg-white;
 }
 
-button,
+/* Button Base Styles */
+button {
+  @apply px-5 py-2.5 rounded-lg font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200 shadow-md;
+}
+
 .btn {
   @apply px-5 py-2.5 rounded-lg font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200 shadow-md;
 }
