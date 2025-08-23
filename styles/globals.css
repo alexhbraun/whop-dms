@@ -4,7 +4,8 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Base Styles */
+/* Base Styles - Force cache bust */
+/* v1.1 */
 body {
   @apply font-sans text-neutral-800 bg-neutral-50;
 }
