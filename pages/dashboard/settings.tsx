@@ -8,6 +8,7 @@ const DashboardSettings = () => {
   const router = useRouter();
   const communitySettings = useCommunitySettings();
   const [logoUrl, setLogoUrl] = useState('');
+  const [logoFile, setLogoFile] = useState<File | null>(null); // New state for file upload
   const [primaryColor, setPrimaryColor] = useState('');
   const [secondaryColor, setSecondaryColor] = useState('');
   const [welcomeMessageTitle, setWelcomeMessageTitle] = useState('');
@@ -39,8 +40,33 @@ const DashboardSettings = () => {
     }
 
     try {
+      let newLogoUrl = logoUrl; // Start with existing or manually entered URL
+
+      if (logoFile) {
+        console.log('[DashboardSettings] Logo file detected, attempting upload...');
+        const formData = new FormData();
+        formData.append('logo', logoFile);
+        formData.append('communityId', community_id);
+
+        const uploadRes = await fetch('/api/upload-logo', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const uploadData = await uploadRes.json();
+
+        if (uploadData.success && uploadData.imageUrl) {
+          console.log('[DashboardSettings] Logo uploaded successfully:', uploadData.imageUrl);
+          newLogoUrl = uploadData.imageUrl; // Update logo URL with the uploaded one
+        } else {
+          console.error('[DashboardSettings] Logo upload failed:', uploadData.error);
+          setError(`Logo upload failed: ${uploadData.error || 'Unknown error'}`);
+          return; // Stop if logo upload fails
+        }
+      }
+
       const settingsToUpdate = {
-        logo_url: logoUrl || null,
+        logo_url: newLogoUrl || null,
         primary_color: primaryColor || null,
         secondary_color: secondaryColor || null,
         welcome_message_title: welcomeMessageTitle || null,
@@ -81,19 +107,31 @@ const DashboardSettings = () => {
       {error && <p style={{ color: 'red' }}>{error}</p>}
       <form onSubmit={handleSubmit}>
         <div>
-          <label htmlFor="logoUrl">Logo URL:</label>
+          <label htmlFor="logoUrl">Current Logo URL:</label>
           <input
             type="text"
             id="logoUrl"
             value={logoUrl}
             onChange={(e) => setLogoUrl(e.target.value)}
             style={{ width: '100%', padding: '8px', margin: '5px 0' }}
+            placeholder="Enter URL or upload a new logo"
+          />
+          {logoUrl && <img src={logoUrl} alt="Current Logo" style={{ maxWidth: '100px', marginTop: '10px' }} />}
+        </div>
+        <div>
+          <label htmlFor="logoUpload">Upload New Logo:</label>
+          <input
+            type="file"
+            id="logoUpload"
+            accept="image/*"
+            onChange={(e) => setLogoFile(e.target.files ? e.target.files[0] : null)}
+            style={{ width: '100%', padding: '8px', margin: '5px 0' }}
           />
         </div>
         <div>
           <label htmlFor="primaryColor">Primary Color (Hex):</label>
           <input
-            type="text"
+            type="color"
             id="primaryColor"
             value={primaryColor}
             onChange={(e) => setPrimaryColor(e.target.value)}
@@ -103,7 +141,7 @@ const DashboardSettings = () => {
         <div>
           <label htmlFor="secondaryColor">Secondary Color (Hex):</label>
           <input
-            type="text"
+            type="color"
             id="secondaryColor"
             value={secondaryColor}
             onChange={(e) => setSecondaryColor(e.target.value)}
