@@ -16,6 +16,7 @@ const DashboardSettings = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true); // New loading state
 
   useEffect(() => {
     if (communitySettings) {
@@ -24,8 +25,13 @@ const DashboardSettings = () => {
       setSecondaryColor(communitySettings.secondary_color || '');
       setWelcomeMessageTitle(communitySettings.welcome_message_title || '');
       setWelcomeMessageBody(communitySettings.welcome_message_body || '');
+      setIsLoadingSettings(false); // Settings loaded
+    } else if (router.isReady && !router.query.community_id) {
+      // If router is ready and no community_id, then we're done trying to load
+      setIsLoadingSettings(false);
+      setError('Community ID is missing from the URL. Please ensure you access this page with a valid community_id.');
     }
-  }, [communitySettings]);
+  }, [communitySettings, router.isReady, router.query.community_id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,7 +42,7 @@ const DashboardSettings = () => {
 
     const { community_id } = router.query;
     if (typeof community_id !== 'string' || !community_id) {
-      setError('Community ID not found.');
+      setError('Community ID not found. Cannot save settings.');
       console.error('[DashboardSettings] Community ID not found or invalid:', community_id);
       setIsSaving(false);
       return;
@@ -105,6 +111,26 @@ const DashboardSettings = () => {
       setIsSaving(false);
     }
   };
+
+  if (isLoadingSettings) {
+    return (
+      <div className="min-h-screen bg-neutral-50 p-4 sm:p-6 lg:p-8 flex items-center justify-center">
+        <p className="text-neutral-700 text-lg">Loading app settings...</p>
+      </div>
+    );
+  }
+
+  if (error && error.includes('Community ID is missing')) {
+    return (
+      <div className="min-h-screen bg-neutral-50 p-4 sm:p-6 lg:p-8 flex items-center justify-center">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+          <strong className="font-bold">Error: </strong>
+          <span className="block sm:inline">{error}</span>
+          <p className="mt-2">Please go back to the landing page and click "Configurar" to include the community ID.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-neutral-50 p-4 sm:p-6 lg:p-8">

@@ -31,10 +31,17 @@ export default function Landing() {
                style={{ backgroundColor: communitySettings?.primary_color || undefined }}>
               Ir para o App
             </a>
-            <a href="/whop/settings" className="btn-secondary text-lg px-8 py-3 transform hover:scale-105 transition-transform duration-200"
+            <a href={communitySettings?.community_id ? `/dashboard/settings?community_id=${communitySettings.community_id}` : "#"}
+               className="btn-secondary text-lg px-8 py-3 transform hover:scale-105 transition-transform duration-200"
                style={{
                  backgroundColor: communitySettings?.secondary_color || undefined,
                  color: communitySettings?.primary_color || undefined,
+               }}
+               onClick={(e) => {
+                 if (!communitySettings?.community_id) {
+                   e.preventDefault();
+                   alert("Community ID not available. Please ensure your app is installed or refresh the page.");
+                 }
                }}>
               Configurar
             </a>
