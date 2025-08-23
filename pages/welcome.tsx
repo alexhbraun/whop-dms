@@ -40,36 +40,58 @@ export default function Welcome() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl p-6"
-          style={{ backgroundColor: communitySettings?.secondary_color || '#f0f0f0' }}>
-      {communitySettings?.logo_url && (
-        <div className="text-center mb-6">
-          <img src={communitySettings.logo_url} alt="Community Logo" style={{ maxWidth: '150px', margin: '0 auto' }} />
-        </div>
-      )}
-      <h1
-        className="text-3xl font-semibold text-center mb-6"
-        style={{ color: communitySettings?.primary_color || '#333' }}
-      >
-        {communitySettings?.welcome_message_title || 'Welcome! Please answer a few questions.'}
-      </h1>
-      {communitySettings?.welcome_message_body && (
-        <p className="text-center mb-6" style={{ color: communitySettings?.primary_color || '#555' }}>
-          {communitySettings.welcome_message_body}
-        </p>
-      )}
+    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-neutral-100 flex items-center justify-center p-4">
+      <main className="bg-white p-8 rounded-xl shadow-lg max-w-2xl w-full text-center transform transition-all duration-300 hover:scale-[1.01]">
+        {communitySettings?.logo_url && (
+          <div className="mb-8">
+            <img
+              src={communitySettings.logo_url}
+              alt="Community Logo"
+              className="mx-auto max-w-[120px] h-auto rounded-lg shadow-md border border-neutral-200"
+            />
+          </div>
+        )}
+        <h1
+          className="text-4xl font-serif font-bold text-neutral-900 mb-4 leading-tight"
+          style={{ color: communitySettings?.primary_color || undefined }}
+        >
+          {communitySettings?.welcome_message_title || 'Welcome! Please answer a few questions.'}
+        </h1>
+        {communitySettings?.welcome_message_body && (
+          <p className="text-lg text-neutral-700 mb-8 leading-relaxed"
+             style={{ color: communitySettings?.primary_color ? `${communitySettings.primary_color}d0` : undefined }}>
+            {communitySettings.welcome_message_body}
+          </p>
+        )}
 
-      <form onSubmit={onSubmit} className="space-y-4">
-        <input className="w-full border rounded p-3" placeholder="Your email" value={email} onChange={e => setEmail(e.target.value)} />
-        <input className="w-full border rounded p-3" placeholder="What’s your #1 goal?" value={a1} onChange={e => setA1(e.target.value)} />
-        <input className="w-full border rounded p-3" placeholder="What would make this community a win for you?" value={a2} onChange={e => setA2(e.target.value)} />
-        <input className="w-full border rounded p-3" placeholder="Anything else?" value={a3} onChange={e => setA3(e.target.value)} />
-        {err && <p className="text-red-600 text-sm">{err}</p>}
-        <button disabled={loading} className="w-full rounded bg-blue-600 text-white py-3 font-medium"
-                style={{ backgroundColor: communitySettings?.primary_color || '#2563eb' }}>
-          {loading ? 'Submitting…' : 'Submit Answers'}
-        </button>
-      </form>
-    </main>
+        <form onSubmit={onSubmit} className="space-y-5">
+          <input
+            type="email"
+            className="w-full p-3 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-primary-300 focus:border-primary-500 transition-all duration-200 shadow-sm"
+            placeholder="Your email" value={email} onChange={e => setEmail(e.target.value)} />
+          <input
+            type="text"
+            className="w-full p-3 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-primary-300 focus:border-primary-500 transition-all duration-200 shadow-sm"
+            placeholder="What’s your #1 goal?" value={a1} onChange={e => setA1(e.target.value)} />
+          <input
+            type="text"
+            className="w-full p-3 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-primary-300 focus:border-primary-500 transition-all duration-200 shadow-sm"
+            placeholder="What would make this community a win for you?" value={a2} onChange={e => setA2(e.target.value)} />
+          <input
+            type="text"
+            className="w-full p-3 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-primary-300 focus:border-primary-500 transition-all duration-200 shadow-sm"
+            placeholder="Anything else?" value={a3} onChange={e => setA3(e.target.value)} />
+          {err && <p className="text-red-600 text-sm">{err}</p>}
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn w-full text-lg px-8 py-3 transform hover:scale-105 transition-transform duration-200"
+            style={{ backgroundColor: communitySettings?.primary_color || undefined }}
+          >
+            {loading ? 'Submitting…' : 'Submit Answers'}
+          </button>
+        </form>
+      </main>
+    </div>
   );
 }

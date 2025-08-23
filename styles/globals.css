@@ -1,4 +1,52 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather:wght@400;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Base Styles */
+body {
+  @apply font-sans text-neutral-800 bg-neutral-50;
+}
+
+h1 {
+  @apply text-4xl font-serif font-bold text-neutral-900 my-6;
+}
+
+h2 {
+  @apply text-3xl font-serif font-bold text-neutral-800 my-5;
+}
+
+h3 {
+  @apply text-2xl font-sans font-semibold text-neutral-700 my-4;
+}
+
+p {
+  @apply text-neutral-600 leading-relaxed mb-4;
+}
+
+a {
+  @apply text-primary-600 hover:text-primary-800 transition-colors duration-200;
+}
+
+/* Form Element Base Styles */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="url"],
+input[type="color"],
+input[type="file"],
+textarea,
+select {
+  @apply w-full p-3 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-primary-300 focus:border-primary-500 transition-all duration-200 shadow-sm bg-white;
+}
+
+button,
+.btn {
+  @apply px-5 py-2.5 rounded-lg font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200 shadow-md;
+}
+
+.btn-secondary {
+  @apply bg-neutral-200 text-neutral-800 hover:bg-neutral-300 focus:ring-neutral-400;
+}
 

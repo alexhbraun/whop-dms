@@ -4,41 +4,48 @@ import { useCommunitySettings } from './_app';
 export default function Landing() {
   const communitySettings = useCommunitySettings();
 
-  const btn: React.CSSProperties = {
-    padding: '10px 16px',
-    background: communitySettings?.primary_color || '#111827',
-    color: '#fff',
-    borderRadius: 8,
-    textDecoration: 'none',
-  };
-
-  const btnSecondary: React.CSSProperties = {
-    padding: '10px 16px',
-    background: communitySettings?.secondary_color || '#e5e7eb',
-    color: communitySettings?.primary_color || '#111',
-    borderRadius: 8,
-    textDecoration: 'none',
-  };
-
   return (
     <>
-      <Head><title>Whop DMS — Landing</title></Head>
-      <main style={{ maxWidth: 960, margin: '40px auto', padding: 24, fontFamily: 'Inter, system-ui' }}>
-        {communitySettings?.logo_url && (
-          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-            <img src={communitySettings.logo_url} alt="Community Logo" style={{ maxWidth: '150px' }} />
+      <Head><title>{communitySettings?.welcome_message_title || 'Whop DMS — Landing'}</title></Head>
+      <main className="relative min-h-screen bg-gradient-to-br from-primary-50 to-neutral-100 flex items-center justify-center py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl w-full text-center bg-white p-8 rounded-xl shadow-lg transform transition-all duration-300 hover:scale-[1.01]">
+          {communitySettings?.logo_url && (
+            <div className="mb-10">
+              <img
+                src={communitySettings.logo_url}
+                alt="Community Logo"
+                className="mx-auto max-w-[180px] h-auto rounded-lg shadow-md border border-neutral-200"
+              />
+            </div>
+          )}
+          <h1 className="text-5xl md:text-6xl font-extrabold text-neutral-900 mb-6 leading-tight"
+              style={{ color: communitySettings?.primary_color || undefined }}>
+            {communitySettings?.welcome_message_title || 'Whop DMS: Elevate Your Community Experience'}
+          </h1>
+          <p className="text-xl md:text-2xl text-neutral-700 mb-10 leading-relaxed"
+             style={{ color: communitySettings?.primary_color ? `${communitySettings.primary_color}d0` : undefined }}> {/* Slightly transparent primary color */}
+            {communitySettings?.welcome_message_body || 'Capture leads, configure your Whop integration, and track results to empower your community and grow your business.'}
+          </p>
+          <div className="flex flex-col items-center justify-center gap-5 sm:flex-row">
+            <a href="/app" className="btn text-lg px-8 py-3 transform hover:scale-105 transition-transform duration-200"
+               style={{ backgroundColor: communitySettings?.primary_color || undefined }}>
+              Ir para o App
+            </a>
+            <a href="/whop/settings" className="btn-secondary text-lg px-8 py-3 transform hover:scale-105 transition-transform duration-200"
+               style={{
+                 backgroundColor: communitySettings?.secondary_color || undefined,
+                 color: communitySettings?.primary_color || undefined,
+               }}>
+              Configurar
+            </a>
+            <a href="/dashboard/leads" className="btn-secondary text-lg px-8 py-3 transform hover:scale-105 transition-transform duration-200"
+               style={{
+                 backgroundColor: communitySettings?.secondary_color || undefined,
+                 color: communitySettings?.primary_color || undefined,
+               }}>
+              Ver Leads
+            </a>
           </div>
-        )}
-        <h1 style={{ marginBottom: 8, color: communitySettings?.primary_color || '#111827' }}>
-          {communitySettings?.welcome_message_title || 'Whop DMS'}
-        </h1>
-        <p style={{ color: communitySettings?.primary_color || '#555', marginBottom: 24 }}>
-          {communitySettings?.welcome_message_body || 'Capture leads, configure sua integração com o Whop e acompanhe resultados.'}
-        </p>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <a href="/app" style={btn}>Ir para o App</a>
-          <a href="/whop/settings" style={btnSecondary}>Configurar</a>
-          <a href="/dashboard/leads" style={btnSecondary}>Ver Leads</a>
         </div>
       </main>
     </>
