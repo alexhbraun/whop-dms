@@ -228,72 +228,69 @@ export default function WhopSettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-neutral-50 py-12 px-4 sm:px-6 lg:px-8">
       <Toaster />
-      <main className="max-w-4xl mx-auto bg-white p-8 rounded-xl shadow-lg">
-        <h1 className="text-center text-4xl font-serif font-bold text-neutral-900 mb-8">App Settings</h1>
+      <main className="max-w-3xl mx-auto">
+        <h1 className="text-3xl font-bold text-center text-neutral-900 mb-8">App Settings</h1>
 
         {/* General App Settings */}
-        <section className="mb-10 p-6 border border-neutral-200 rounded-lg shadow-sm bg-neutral-50">
-          <h2 className="text-2xl font-semibold text-neutral-800 mb-4">General Settings</h2>
-          <div className="space-y-4">
-            {/* Require Email Setting */}
-            <div>
-              <label htmlFor="requireEmail" className="flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  id="requireEmail"
-                  className="form-checkbox h-5 w-5 text-primary-600 rounded focus:ring-primary-500 transition duration-150 ease-in-out"
-                  checked={appSettings.requireEmail || false}
-                  onChange={(e) => setAppSettings({ ...appSettings, requireEmail: e.target.checked })}
-                />
-                <span className="ml-3 text-lg font-medium text-neutral-800">Require email for lead forms</span>
-              </label>
-              <p className="text-sm text-neutral-500 mt-2">If enabled, users will always be prompted for their email address in lead capture forms.</p>
-            </div>
-
-            {/* Webhook URL Setting */}
-            <div>
-              <label htmlFor="webhookUrl" className="block text-lg font-medium text-neutral-800 mb-2">
-                Forward leads to webhook URL:
-              </label>
+        <section className="bg-white shadow rounded-lg p-6 space-y-4 mb-8">
+          <h2 className="text-xl font-semibold text-neutral-800 mb-4">General Settings</h2>
+          <div>
+            <label htmlFor="requireEmail" className="flex items-center cursor-pointer mb-2">
               <input
-                type="text"
-                id="webhookUrl"
-                value={appSettings.forwardWebhookUrl || ''}
-                onChange={(e) => setAppSettings({ ...appSettings, forwardWebhookUrl: e.target.value })}
-                placeholder="e.g., https://your-crm.com/webhook"
+                type="checkbox"
+                id="requireEmail"
+                className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                checked={appSettings.requireEmail || false}
+                onChange={(e) => setAppSettings({ ...appSettings, requireEmail: e.target.checked })}
               />
-              <p className="text-sm text-neutral-500 mt-2">All captured leads will be automatically forwarded to this endpoint.</p>
-            </div>
-
-            <button
-              onClick={handleSaveAppSettings}
-              disabled={loading}
-              className="btn w-full text-lg px-8 py-3 transform hover:scale-105 transition-transform duration-200 mt-6"
-            >
-              {loading ? 'Saving App Settings...' : 'Save App Settings'}
-            </button>
+              <span className="ml-3 text-sm font-medium text-neutral-800">Require email for lead forms</span>
+            </label>
+            <p className="text-xs text-neutral-500 ml-7">If enabled, users will always be prompted for their email address in lead capture forms.</p>
           </div>
+
+          <div>
+            <label htmlFor="webhookUrl" className="block text-sm font-medium text-neutral-800 mb-2">
+              Forward leads to webhook URL:
+            </label>
+            <input
+              type="text"
+              id="webhookUrl"
+              value={appSettings.forwardWebhookUrl || ''}
+              onChange={(e) => setAppSettings({ ...appSettings, forwardWebhookUrl: e.target.value })}
+              placeholder="e.g., https://your-crm.com/webhook"
+              className="w-full border rounded-md px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <p className="text-xs text-neutral-500 mt-2">All captured leads will be automatically forwarded to this endpoint.</p>
+          </div>
+
+          <button
+            onClick={handleSaveAppSettings}
+            disabled={loading}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-md px-4 py-2 w-full mt-4"
+          >
+            {loading ? 'Saving App Settings...' : 'Save App Settings'}
+          </button>
         </section>
 
         {/* DM Templates Management */}
-        <section className="p-6 border border-neutral-200 rounded-lg shadow-sm bg-neutral-50">
-          <h2 className="text-2xl font-semibold text-neutral-800 mb-4">DM Templates</h2>
+        <section className="bg-white shadow rounded-lg p-6 space-y-4">
+          <h2 className="text-xl font-semibold text-neutral-800 mb-4">DM Templates</h2>
 
           {/* Create New Template */}
-          <div className="mb-6 p-4 border border-primary-200 rounded-lg bg-primary-50 flex flex-col sm:flex-row items-center gap-4">
+          <div className="border border-gray-200 rounded-md p-4 flex flex-col sm:flex-row items-center gap-3 mb-6 bg-neutral-50">
             <input
               type="text"
               placeholder="New Template Name"
               value={newTemplateName}
               onChange={(e) => setNewTemplateName(e.target.value)}
-              className="flex-grow"
+              className="w-full border rounded-md px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
             <button
               onClick={handleCreateNewTemplate}
               disabled={isTemplateSaving || !newTemplateName}
-              className="btn bg-primary-600 hover:bg-primary-700 whitespace-nowrap"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-md px-4 py-2 whitespace-nowrap w-full sm:w-auto"
             >
               {isTemplateSaving ? 'Creating...' : 'Create New Template'}
             </button>
@@ -303,20 +300,20 @@ export default function WhopSettingsPage() {
           {dmTemplates.length === 0 && !editingTemplate ? (
             <p className="text-neutral-600 text-center py-6">No DM templates found. Create one above!</p>
           ) : (
-            <div className="space-y-3 mb-6">
+            <div className="space-y-3">
               {dmTemplates.map((template) => (
-                <div key={template.id} className="flex items-center justify-between p-4 border border-neutral-200 rounded-lg bg-white shadow-sm">
+                <div key={template.id} className="border border-gray-200 rounded-md p-4 flex justify-between items-center hover:bg-gray-50 transition-colors duration-200">
                   <span className="text-lg font-medium text-neutral-800">{template.name}</span>
-                  <div className="flex gap-2">
+                  <div className="flex gap-3">
                     <button
                       onClick={() => handleSelectTemplate(template)}
-                      className="btn-secondary text-sm px-3 py-1.5"
+                      className="border border-gray-300 text-gray-700 rounded-md px-3 py-1.5 hover:bg-gray-50 text-sm"
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => handleDeleteTemplate(template.id)}
-                      className="btn bg-red-600 hover:bg-red-700 text-sm px-3 py-1.5"
+                      className="bg-red-600 hover:bg-red-700 text-white font-medium rounded-md px-3 py-1.5 text-sm"
                     >
                       Delete
                     </button>
@@ -328,30 +325,31 @@ export default function WhopSettingsPage() {
 
           {/* Template Editor */}
           {editingTemplate && (
-            <div className="mt-8 p-6 border border-primary-300 rounded-lg shadow-md bg-primary-50">
-              <h3 className="text-xl font-semibold text-primary-800 mb-4">Editing Template: {editingTemplate.name}</h3>
+            <div className="mt-8 border border-indigo-300 rounded-lg shadow-md p-6 bg-indigo-50">
+              <h3 className="text-xl font-semibold text-indigo-800 mb-4">Editing Template: {editingTemplate.name}</h3>
               <div className="space-y-4 mb-6">
                 <div>
-                  <label className="block text-primary-700 text-sm font-medium mb-2">Template Name:</label>
+                  <label className="block text-indigo-700 text-sm font-medium mb-2">Template Name:</label>
                   <input
                     type="text"
                     value={editingTemplate.name}
                     onChange={(e) => setEditingTemplate({ ...editingTemplate, name: e.target.value })}
+                    className="w-full border rounded-md px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
-                <h4 className="text-lg font-semibold text-primary-700 mt-6 mb-3">DM Steps/Questions:</h4>
+                <h4 className="text-lg font-semibold text-indigo-700 mt-6 mb-3">DM Steps/Questions:</h4>
                 {editingTemplate.steps.length === 0 ? (
                   <p className="text-neutral-600">No steps defined yet. Add your first question!</p>
                 ) : (
                   <div className="space-y-4">
                     {editingTemplate.steps.map((step, index) => (
-                      <div key={index} className="p-4 border border-primary-200 rounded-lg bg-white shadow-sm">
-                        <div className="flex justify-between items-center mb-2">
+                      <div key={index} className="border border-indigo-200 rounded-md p-4 bg-white shadow-sm">
+                        <div className="flex justify-between items-center mb-3">
                           <span className="text-md font-medium text-neutral-800">Step {step.step_order}</span>
                           <button
                             type="button"
                             onClick={() => handleRemoveStep(index)}
-                            className="text-red-600 hover:text-red-800 text-sm"
+                            className="text-red-600 hover:text-red-800 font-medium text-sm px-2 py-1 rounded-md"
                           >
                             Remove
                           </button>
@@ -363,6 +361,7 @@ export default function WhopSettingsPage() {
                               value={step.question_text}
                               onChange={(e) => handleStepChange(index, 'question_text', e.target.value)}
                               rows={2}
+                              className="w-full border rounded-md px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             />
                           </div>
                           <label className="flex items-center">
@@ -370,7 +369,7 @@ export default function WhopSettingsPage() {
                               type="checkbox"
                               checked={step.require_email || false}
                               onChange={(e) => handleStepChange(index, 'require_email', e.target.checked)}
-                              className="form-checkbox h-4 w-4 text-primary-600 rounded focus:ring-primary-500"
+                              className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
                             />
                             <span className="ml-2 text-sm text-neutral-700">Require Email (if applicable)</span>
                           </label>
@@ -383,7 +382,7 @@ export default function WhopSettingsPage() {
                 <button
                   type="button"
                   onClick={handleAddStep}
-                  className="btn bg-primary-600 hover:bg-primary-700 mt-4"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-md px-4 py-2 mt-4"
                 >
                   Add New Step
                 </button>
@@ -392,7 +391,7 @@ export default function WhopSettingsPage() {
                 <button
                   type="button"
                   onClick={() => setEditingTemplate(null)}
-                  className="btn-secondary"
+                  className="border border-gray-300 text-gray-700 rounded-md px-4 py-2 hover:bg-gray-50"
                 >
                   Cancel
                 </button>
@@ -400,7 +399,7 @@ export default function WhopSettingsPage() {
                   type="button"
                   onClick={handleSaveDmTemplate}
                   disabled={isTemplateSaving}
-                  className="btn bg-green-600 hover:bg-green-700"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-md px-4 py-2"
                 >
                   {isTemplateSaving ? 'Saving...' : 'Save Template'}
                 </button>
