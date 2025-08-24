@@ -11,7 +11,7 @@ export default function SettingsPage({ searchParams }) {
 
       {!creatorId && (
         <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
-          Community ID is missing. If you opened this page directly, please access it from the Whop sidebar or go back to <a className="underline" href="/app">/app</a>.
+          Community ID is missing. If you opened this page directly, please access it from the Whop sidebar or go back to <LinkWithId baseHref="/app" className="underline">/app</LinkWithId>.
         </div>
       )}
 

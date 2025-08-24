@@ -1,15 +1,13 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather:wght@400;700&display=swap');
 
-/* v1.2 - Attempting another cache bust for Vercel CSS */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Base Styles - Force cache bust */
-/* v1.1 */
-body {
-  @apply font-sans text-neutral-800 bg-neutral-50;
-}
+html, body { height: 100%; }
+body { @apply bg-gray-50 text-gray-900; }
+
+/* Base Styles */
 
 h1 {
   @apply text-4xl font-serif font-bold text-neutral-900 my-6;
