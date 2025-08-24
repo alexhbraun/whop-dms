@@ -1,14 +1,27 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { useCommunitySettings, CommunitySettings } from '../../pages/_app'; // Use the type from _app
-// import { updateCommunitySettings } from '../../lib/supabaseUtils'; // Removed direct import
+// import { useCommunitySettings, CommunitySettings } from '../../pages/_app'; // Removed context import
+import useCreatorId from '@/components/useCreatorId'; // Import the new hook
+
+interface CommunitySettings {
+  id: number;
+  community_id: string;
+  logo_url: string | null;
+  primary_color: string | null;
+  secondary_color: string | null;
+  welcome_message_title: string | null;
+  welcome_message_body: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 const DashboardSettings = () => {
   console.log('[DashboardSettings] Component rendered.');
   const router = useRouter();
-  const communitySettings = useCommunitySettings();
+  const creatorId = useCreatorId(router.query); // Use the new hook
+  const [settings, setSettings] = useState<CommunitySettings | null>(null); // Local settings state
   const [logoUrl, setLogoUrl] = useState('');
-  const [logoFile, setLogoFile] = useState<File | null>(null); // New state for file upload
+  const [logoFile, setLogoFile] = useState<File | null>(null);
   const [primaryColor, setPrimaryColor] = useState('');
   const [secondaryColor, setSecondaryColor] = useState('');
   const [welcomeMessageTitle, setWelcomeMessageTitle] = useState('');
@@ -16,22 +29,42 @@ const DashboardSettings = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [isLoadingSettings, setIsLoadingSettings] = useState(true); // New loading state
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
   useEffect(() => {
-    if (communitySettings) {
-      setLogoUrl(communitySettings.logo_url || '');
-      setPrimaryColor(communitySettings.primary_color || '');
-      setSecondaryColor(communitySettings.secondary_color || '');
-      setWelcomeMessageTitle(communitySettings.welcome_message_title || '');
-      setWelcomeMessageBody(communitySettings.welcome_message_body || '');
-      setIsLoadingSettings(false); // Settings loaded
-    } else if (router.isReady && !router.query.community_id) {
-      // If router is ready and no community_id, then we're done trying to load
+    const fetchSettings = async (id: string) => {
+      setIsLoadingSettings(true);
+      try {
+        const res = await fetch(`/api/community/settings?community_id=${id}`);
+        const data = await res.json();
+        if (data.success && data.settings) {
+          setSettings(data.settings);
+          setLogoUrl(data.settings.logo_url || '');
+          setPrimaryColor(data.settings.primary_color || '');
+          setSecondaryColor(data.settings.secondary_color || '');
+          setWelcomeMessageTitle(data.settings.welcome_message_title || '');
+          setWelcomeMessageBody(data.settings.welcome_message_body || '');
+        } else {
+          console.error('Failed to fetch community settings from API:', data.error);
+          setError(`Failed to load settings: ${data.error || 'Unknown error'}.`);
+          setSettings(null);
+        }
+      } catch (err) {
+        console.error('Error fetching community settings API:', err);
+        setError('An unexpected error occurred while loading settings.');
+        setSettings(null);
+      } finally {
+        setIsLoadingSettings(false);
+      }
+    };
+
+    if (creatorId && creatorId !== 'unknown') {
+      fetchSettings(creatorId);
+    } else {
       setIsLoadingSettings(false);
       setError('Community ID is missing from the URL. Please ensure you access this page with a valid community_id.');
     }
-  }, [communitySettings, router.isReady, router.query.community_id]);
+  }, [creatorId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,22 +73,21 @@ const DashboardSettings = () => {
     setError('');
     setIsSaving(true);
 
-    const { community_id } = router.query;
-    if (typeof community_id !== 'string' || !community_id) {
+    if (!creatorId || creatorId === 'unknown') {
       setError('Community ID not found. Cannot save settings.');
-      console.error('[DashboardSettings] Community ID not found or invalid:', community_id);
+      console.error('[DashboardSettings] Community ID not found or invalid:', creatorId);
       setIsSaving(false);
       return;
     }
 
     try {
-      let newLogoUrl = logoUrl; // Start with existing or manually entered URL
+      let newLogoUrl = logoUrl;
 
       if (logoFile) {
         console.log('[DashboardSettings] Logo file detected, attempting upload...');
         const formData = new FormData();
         formData.append('logo', logoFile);
-        formData.append('communityId', community_id);
+        formData.append('communityId', creatorId);
 
         const uploadRes = await fetch('/api/upload-logo', {
           method: 'POST',
@@ -66,12 +98,12 @@ const DashboardSettings = () => {
 
         if (uploadData.success && uploadData.imageUrl) {
           console.log('[DashboardSettings] Logo uploaded successfully:', uploadData.imageUrl);
-          newLogoUrl = uploadData.imageUrl; // Update logo URL with the uploaded one
+          newLogoUrl = uploadData.imageUrl;
         } else {
           console.error('[DashboardSettings] Logo upload failed:', uploadData.error);
           setError(`Logo upload failed: ${uploadData.error || 'Unknown error'}`);
           setIsSaving(false);
-          return; // Stop if logo upload fails
+          return;
         }
       }
 
@@ -82,11 +114,10 @@ const DashboardSettings = () => {
         welcome_message_title: welcomeMessageTitle || null,
         welcome_message_body: welcomeMessageBody || null,
       };
-      console.log('[DashboardSettings] Attempting to update settings for communityId:', community_id);
+      console.log('[DashboardSettings] Attempting to update settings for communityId:', creatorId);
       console.log('[DashboardSettings] Settings payload:', settingsToUpdate);
 
-      // Call the API route instead of direct function
-      const res = await fetch(`/api/community/settings?community_id=${community_id}`, {
+      const res = await fetch(`/api/community/settings?community_id=${creatorId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -99,7 +130,6 @@ const DashboardSettings = () => {
       if (data.success && data.settings) {
         console.log('[DashboardSettings] Settings saved successfully:', data.settings);
         setMessage('Settings saved successfully!');
-        // Optionally, re-fetch settings in _app.tsx or update context directly
       } else {
         console.error('[DashboardSettings] Failed to save settings. API returned:', data.error);
         setError(`Failed to save settings: ${data.error || 'Unknown error'}. Check Vercel logs for API details.`);
@@ -114,26 +144,26 @@ const DashboardSettings = () => {
 
   if (isLoadingSettings) {
     return (
-      <div className="min-h-screen bg-neutral-50 p-4 sm:p-6 lg:p-8 flex items-center justify-center">
+      <div className="flex items-center justify-center">
         <p className="text-neutral-700 text-lg">Loading app settings...</p>
       </div>
     );
   }
 
-  if (error && error.includes('Community ID is missing')) {
+  if (!creatorId || creatorId === 'unknown') {
     return (
-      <div className="min-h-screen bg-neutral-50 p-4 sm:p-6 lg:p-8 flex items-center justify-center">
+      <div className="flex items-center justify-center">
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
           <strong className="font-bold">Error: </strong>
           <span className="block sm:inline">{error}</span>
-          <p className="mt-2">Please go back to the landing page and click "Configurar" to include the community ID.</p>
+          <p className="mt-2">Please go back to the landing page and click "Configure" to include the community ID.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 p-4 sm:p-6 lg:p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <main className="max-w-4xl mx-auto bg-white p-8 rounded-xl shadow-lg">
         <h1 className="text-center text-4xl font-serif font-bold text-neutral-900 mb-8">Community Settings</h1>
 

@@ -1,4 +1,4 @@
-import '../styles/globals.css';
+// import '../styles/globals.css'; // Removed as global CSS is now in app/globals.css
 import type { AppProps } from 'next/app';
 import { useState, useEffect, createContext, useContext } from 'react';
 import { useRouter } from 'next/router';
