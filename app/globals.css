@@ -6,14 +6,12 @@
 
 @layer base {
   html {
-    @apply font-inter text-gray-900 antialiased;
+    @apply font-inter text-white/90 antialiased;
     @apply bg-gradient-to-br from-indigo-900 to-gray-900 dark:from-black dark:to-gray-950;
     /* Soft gradient background */
     background-attachment: fixed;
     background-size: cover;
     background-position: center;
-    /* Subtle noise effect */
-    background-image: radial-gradient(circle at 10% 20%, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 50%), radial-gradient(circle at 90% 80%, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 50%), var(--tw-gradient-to), var(--tw-gradient-from);
     animation: noise 10s infinite alternate;
   }
 
