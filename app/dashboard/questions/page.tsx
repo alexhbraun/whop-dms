@@ -454,9 +454,17 @@ function OnboardingQuestionsPageContent() {
                 type="text"
                 id="questionLabel"
                 value={editorState.label}
-                onChange={(e) => setEditorState(s => ({ ...s, label: e.target.value }))}
+                onChange={(e) => setEditorState(s => {
+                  const newLabel = e.target.value;
+                  const newKeySlug = s.key_slug || initialEditorState.key_slug; // Only auto-generate if key_slug is empty or initial
+                  return {
+                    ...s,
+                    label: newLabel,
+                    key_slug: newKeySlug === initialEditorState.key_slug ? newLabel.toLowerCase().replace(/[^a-z0-9_]/g, '') : newKeySlug,
+                  };
+                })}
                 placeholder="e.g., What are your goals?"
-                className="w-full"
+                className="w-full p-3 rounded-lg bg-white/10 text-white/90 border border-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200"
                 disabled={isFormDisabled}
               />
               {validationErrors.label && <p className="text-red-300 text-xs mt-1">{validationErrors.label}</p>}
@@ -472,7 +480,7 @@ function OnboardingQuestionsPageContent() {
                   key_slug: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') // Auto-slugify
                 }))}
                 placeholder="e.g., goals_question"
-                className="w-full"
+                className="w-full p-3 rounded-lg bg-white/10 text-white/90 border border-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200"
                 disabled={isFormDisabled || (editorState.id !== null)} // Disable key editing for existing questions
               />
               <p className="text-xs text-white/50 mt-1">Must be unique, lowercase alphanumeric with underscores (e.g., `member_email`). Cannot be changed after creation.</p>
@@ -491,7 +499,7 @@ function OnboardingQuestionsPageContent() {
                     options: (newType === 'select' || newType === 'multiselect') ? s.options : [], // Clear options if type changes
                   }));
                 }}
-                className="w-full"
+                className="w-full p-3 rounded-lg bg-white/10 text-white/90 border border-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200"
                 disabled={isFormDisabled}
               >
                 <option value="text">Text Input</option>
@@ -512,7 +520,7 @@ function OnboardingQuestionsPageContent() {
                     options: e.target.value.split(',').map(opt => opt.trim()).filter(Boolean),
                   }))}
                   placeholder="Option 1, Option 2, Option 3"
-                  className="w-full"
+                  className="w-full p-3 rounded-lg bg-white/10 text-white/90 border border-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200"
                   disabled={isFormDisabled}
                 />
                 {validationErrors.options && <p className="text-red-300 text-xs mt-1">{validationErrors.options}</p>}
