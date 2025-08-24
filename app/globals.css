@@ -4,53 +4,80 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body { height: 100%; }
-body { @apply bg-gray-50 text-gray-900; }
+@layer base {
+  html {
+    @apply font-inter text-gray-900 antialiased;
+    @apply bg-gradient-to-br from-indigo-900 to-gray-900 dark:from-black dark:to-gray-950;
+    /* Soft gradient background */
+    background-attachment: fixed;
+    background-size: cover;
+    background-position: center;
+    /* Subtle noise effect */
+    background-image: radial-gradient(circle at 10% 20%, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 50%), radial-gradient(circle at 90% 80%, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 50%), var(--tw-gradient-to), var(--tw-gradient-from);
+    animation: noise 10s infinite alternate;
+  }
 
-/* Base Styles */
+  body {
+    @apply min-h-screen flex flex-col items-center justify-center;
+    /* This ensures the content is centered and takes full height */
+    height: 100%;
+    width: 100%;
+    overflow-x: hidden; /* Prevent horizontal scroll */
+  }
 
-h1 {
-  @apply text-4xl font-serif font-bold text-neutral-900 my-6;
+  /* Responsive container for content */
+  .container {
+    @apply mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl w-full;
+  }
 }
 
-h2 {
-  @apply text-3xl font-serif font-bold text-neutral-800 my-5;
+@layer components {
+  .glass-card {
+    @apply relative rounded-2xl border border-white/10 backdrop-blur-xl shadow-2xl transition-all duration-300 ease-in-out;
+    @apply bg-white/10 dark:bg-white/5;
+    @apply hover:border-white/20 hover:shadow-2xl;
+  }
+
+  /* Custom focus ring for accessibility */
+  .focus-ring {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-gray-900;
+  }
+
+  /* Base button styling */
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus-ring;
+  }
+
+  .btn-secondary {
+    @apply bg-gray-600 hover:bg-gray-700;
+  }
+
+  /* Form elements styling */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  textarea,
+  select {
+    @apply block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white/50 text-gray-900 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600;
+  }
 }
 
-h3 {
-  @apply text-2xl font-sans font-semibold text-neutral-700 my-4;
+/* Custom scrollbar for a cleaner look */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
-p {
-  @apply text-neutral-600 leading-relaxed mb-4;
+::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
 }
 
-a {
-  @apply text-primary-600 hover:text-primary-800 transition-colors duration-200;
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.3);
 }
 
-/* Form Element Base Styles */
-input[type="text"],
-input[type="email"],
-input[type="password"],
-input[type="url"],
-input[type="color"],
-input[type="file"],
-textarea,
-select {
-  @apply w-full p-3 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-primary-300 focus:border-primary-500 transition-all duration-200 shadow-sm bg-white;
-}
-
-/* Button Base Styles */
-button {
-  @apply px-5 py-2.5 rounded-lg font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200 shadow-md;
-}
-
-.btn {
-  @apply px-5 py-2.5 rounded-lg font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200 shadow-md;
-}
-
-.btn-secondary {
-  @apply bg-neutral-200 text-neutral-800 hover:bg-neutral-300 focus:ring-neutral-400;
+::-webkit-scrollbar-track {
+  background-color: rgba(0, 0, 0, 0.1);
 }
 
