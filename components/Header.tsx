@@ -6,7 +6,7 @@ export default function Header() {
   const pathname = usePathname();
 
   // Determine if we are on a dashboard/messages or dashboard/questions page
-  const isDashboardPage = pathname.startsWith('/dashboard');
+  const isDashboardPage = pathname?.startsWith('/dashboard');
 
   return (
     <header className="w-full max-w-5xl mx-auto py-6 px-4 mb-8 text-white/90">
