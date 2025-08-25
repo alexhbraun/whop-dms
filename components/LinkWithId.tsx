@@ -23,6 +23,8 @@ export default function LinkWithId({
   const pathname = usePathname();
   const currentSearchParams = useSearchParams();
 
+  console.log('[LinkWithId] Rendering. baseHref:', baseHref, 'creatorId:', creatorId, 'currentSearchParams:', currentSearchParams?.toString());
+
   const getHref = () => {
     // Safely create URLSearchParams, providing an empty string if currentSearchParams is null
     const params = new URLSearchParams(currentSearchParams?.toString() || '');

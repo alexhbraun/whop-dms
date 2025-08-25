@@ -22,6 +22,7 @@ export default function useCreatorId(searchParams: ReadonlyURLSearchParams | nul
   });
 
   useEffect(() => {
+    console.log('[useCreatorId] Initializing useEffect. qId:', qId);
     // If query provided, persist & stop
     if (qId) {
       try { localStorage.setItem(KEY_ID, qId); } catch (e) { console.warn('localStorage set error (qId):', e); }
@@ -34,6 +35,7 @@ export default function useCreatorId(searchParams: ReadonlyURLSearchParams | nul
       try {
         const savedId = localStorage.getItem(KEY_ID);
         const savedSlug = localStorage.getItem(KEY_SLUG);
+        console.log('[useCreatorId] From localStorage: savedId:', savedId, 'savedSlug:', savedSlug);
         if (savedId) {
           setCreatorId(savedId);
           setContext({ source: 'local', slug: savedSlug });
@@ -45,8 +47,10 @@ export default function useCreatorId(searchParams: ReadonlyURLSearchParams | nul
       // Prefer parent referrer; fallback to current location.
       let slug: string | null = null;
       try { slug = extractCommunitySlugFromUrl(document.referrer); } catch (e) { console.warn('Error getting slug from referrer:', e); }
+      console.log('[useCreatorId] Slug from referrer:', slug);
       if (!slug) {
         try { slug = extractCommunitySlugFromUrl(window.location.href); } catch (e) { console.warn('Error getting slug from window.location:', e); }
+        console.log('[useCreatorId] Slug from window.location:', slug);
       }
 
       if (slug) {
@@ -57,6 +61,7 @@ export default function useCreatorId(searchParams: ReadonlyURLSearchParams | nul
           const res = await fetch(`/api/resolve/community?slug=${encodeURIComponent(slug)}`);
           if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
           const data = await res.json();
+          console.log('[useCreatorId] Resolver API response for slug', slug, ':', data);
 
           if (data?.ok && data?.business_id) {
             setCreatorId(data.business_id);
@@ -69,6 +74,7 @@ export default function useCreatorId(searchParams: ReadonlyURLSearchParams | nul
 
       // 4) Final fallback: env default
       if (process.env.NEXT_PUBLIC_WHOP_COMPANY_ID) {
+        console.log('[useCreatorId] Falling back to env variable:', process.env.NEXT_PUBLIC_WHOP_COMPANY_ID);
         setCreatorId(process.env.NEXT_PUBLIC_WHOP_COMPANY_ID);
         setContext(c => ({ ...c, source: 'env_fallback' }));
       }
