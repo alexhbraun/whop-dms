@@ -5,72 +5,72 @@ import { ReadonlyURLSearchParams } from 'next/navigation';
 
 interface CreatorIdHookResponse {
   creatorId: string | null;
-  context: { source: string; slug: string | null; };
+  context: { source: string; host: string | null; slug: string | null; };
 }
 
 const KEY_ID   = 'whop_creator_business_id'; // canonical id to use everywhere
 const KEY_SLUG = 'whop_creator_slug';        // useful for debug
 
 export default function useCreatorId(searchParams: ReadonlyURLSearchParams | null): CreatorIdHookResponse {
-  // 1) direct query param "community_id" / "business_id"
   const qId = searchParams?.get('community_id') || searchParams?.get('business_id') || null;
 
-  const [creatorId, setCreatorId] = useState<string | null>(qId);
-  const [context, setContext] = useState<{ source: string; slug: string | null; }>({
-    source: qId ? 'query' : 'unknown',
+  const [creatorId, setCreatorId] = useState<string | null>(null);
+  const [context, setContext] = useState<{ source: string; host: string | null; slug: string | null; }>({
+    source: 'unknown',
+    host: typeof window !== 'undefined' ? window.location.host : null,
     slug: null
   });
 
   useEffect(() => {
     console.log('[useCreatorId] Initializing useEffect. qId:', qId);
-    // If query provided, persist & stop
-    if (qId) {
-      try { localStorage.setItem(KEY_ID, qId); } catch (e) { console.warn('localStorage set error (qId):', e); }
-      setContext(c => ({ ...c, source: 'query' }));
-      console.log('[useCreatorId] Resolved from query:', qId);
-      return;
-    }
 
-   (async function resolve() {
-      // 2) Parse community slug from URL (embedded iframe)
-      // Prefer parent referrer; fallback to current location.
-      let slug: string | null = null;
-      try {
-        if (typeof document !== 'undefined' && document.referrer) {
-          slug = extractCommunitySlugFromUrl(document.referrer);
-          console.log('[useCreatorId] Slug from referrer:', slug);
-        }
-      } catch (e) { console.warn('Error getting slug from referrer:', e); }
+    const resolveCreatorId = async () => {
+      const currentHost = typeof window !== 'undefined' ? window.location.host : null;
+      setContext(c => ({ ...c, host: currentHost }));
+      console.log('[useCreatorId] Current host:', currentHost);
 
-      if (!slug) {
-        try {
-          if (typeof window !== 'undefined' && window.location.href) {
-            slug = extractCommunitySlugFromUrl(window.location.href);
-            console.log('[useCreatorId] Slug from window.location:', slug);
+      // 1) direct query param "community_id" / "business_id"
+      if (qId) {
+        try { localStorage.setItem(KEY_ID, qId); } catch (e) { console.warn('localStorage set error (qId):', e); }
+        setCreatorId(qId);
+        setContext(c => ({ ...c, source: 'query' }));
+        console.log('[useCreatorId] Resolved from query:', qId);
+
+        // If qId is present, try to bind it to the current host
+        if (currentHost) {
+          try {
+            await fetch('/api/resolve/host', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ host: currentHost, business_id: qId }),
+            });
+            console.log('[useCreatorId] Host-business_id mapping updated for host:', currentHost, 'id:', qId);
+          } catch (e) {
+            console.warn('[useCreatorId] Error POSTing host_map:', e);
           }
-        } catch (e) { console.warn('Error getting slug from window.location:', e); }
+        }
+        return;
       }
 
-      if (slug) {
-        setContext(c => ({ ...c, source: 'slug', slug }));
-        try { localStorage.setItem(KEY_SLUG, slug); } catch (e) { console.warn('localStorage set error (slug):', e); }
-        // ask server to resolve slug -> business_id
+      // 2) Resolve from embed host
+      if (currentHost) {
+        console.log('[useCreatorId] Attempting to resolve from host resolver:', currentHost);
         try {
-          const res = await fetch(`/api/resolve/community?slug=${encodeURIComponent(slug)}`);
+          const res = await fetch(`/api/resolve/host?host=${encodeURIComponent(currentHost)}`);
           if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
           const data = await res.json();
-          console.log('[useCreatorId] Resolver API response for slug', slug, ':', data);
+          console.log('[useCreatorId] Host resolver API response for host', currentHost, ':', data);
 
           if (data?.ok && data?.business_id) {
             setCreatorId(data.business_id);
-            try { localStorage.setItem(KEY_ID, data.business_id); } catch (e) { console.warn('localStorage set error (resolved ID):', e); }
-            setContext({ source: `resolver:${data.source || 'cache'}`, slug });
-            console.log('[useCreatorId] Resolved from slug resolver:', data.business_id);
+            try { localStorage.setItem(KEY_ID, data.business_id); } catch (e) { console.warn('localStorage set error (resolved ID from host):', e); }
+            setContext({ source: `host_resolver:${data.source || 'cache'}`, host: currentHost, slug: null });
+            console.log('[useCreatorId] Resolved from host resolver:', data.business_id);
             return;
           }
-        } catch (e) { console.warn('Error resolving slug to business_id:', e); }
+        } catch (e) { console.warn('Error resolving host to business_id:', e); }
       }
-
+      
       // 3) localStorage (already resolved before) - now a fallback
       try {
         const savedId = localStorage.getItem(KEY_ID);
@@ -78,7 +78,7 @@ export default function useCreatorId(searchParams: ReadonlyURLSearchParams | nul
         console.log('[useCreatorId] Falling back to localStorage: savedId:', savedId, 'savedSlug:', savedSlug);
         if (savedId) {
           setCreatorId(savedId);
-          setContext({ source: 'local', slug: savedSlug });
+          setContext(c => ({ ...c, source: 'local', slug: savedSlug }));
           console.log('[useCreatorId] Resolved from localStorage:', savedId);
           return;
         }
@@ -93,9 +93,11 @@ export default function useCreatorId(searchParams: ReadonlyURLSearchParams | nul
       } else {
         console.log('[useCreatorId] No creatorId resolved, setting to null.');
         setCreatorId(null);
-        setContext(c => ({ ...c, source: 'none', slug: null }));
+        setContext(c => ({ ...c, source: 'none' }));
       }
-    })();
+    };
+
+    resolveCreatorId();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qId]); // Depend on qId to re-run if it changes
 

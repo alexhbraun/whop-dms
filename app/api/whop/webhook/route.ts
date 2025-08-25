@@ -36,10 +36,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing creator_id or member_id' }, { status: 400 });
     }
 
-    // TODO: (Optional) If community_slug is available in the webhook payload, 
-    // upsert into `community_map` here (slug -> business_id mapping) 
-    // For now, we rely on the client-side resolver.
-
     if (!APP_BASE_URL) {
       console.error('[WHOP_WEBHOOK] APP_BASE_URL environment variable is not set.');
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
