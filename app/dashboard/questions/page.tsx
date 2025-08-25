@@ -186,27 +186,17 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
   if (loading) return <div className="text-white/70 text-center py-12">Loading questions...</div>;
 
   return (
-    <div className="container flex-grow py-8">
-      <header className="text-center mb-12 text-white/90">
-        <h1 className="text-5xl md:text-6xl font-extrabold mb-4 drop-shadow-lg">Onboarding Questions</h1>
-        <p className="text-xl md:text-2xl text-white/80 max-w-2xl mx-auto mb-6">Define questions new members answer after joining.</p>
-        {process.env.NODE_ENV !== 'production' && (
-          <div className="text-lg text-white/60">
-            Installed for: <span className="font-medium text-white">{creatorId || '—'}</span>
-          </div>
-        )}
-      </header>
-
+    <div className="space-y-4"> {/* Replaced container flex-grow py-8 and header with simple div and space-y-4 */}
       {unresolved && (
-        <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-4 shadow-xl mb-8 max-w-3xl mx-auto text-red-300 text-center">
-          <div className="font-semibold mb-1">Finish setup</div>
+        <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-4 shadow-xl mb-4 max-w-3xl mx-auto text-red-300 text-center">
+          <div className="font-semibold mb-1">Unresolved Creator ID</div>
           <p className="text-sm text-white/80 dark:text-white/70">You must finish setup on the Home screen to manage onboarding questions.</p>
           <Link href="/app" className="mt-2 text-xs underline underline-offset-2 text-white/80 hover:text-white">Go to Home</Link>
         </div>
       )}
 
       <div className="max-w-5xl mx-auto space-y-4"> {/* Main content container */}
-        <InfoCardQuestions /> {/* Info panel here */}
+        <InfoCardQuestions />
 
         {error && <div className="glass-card border-red-500/30 bg-red-500/10 dark:bg-red-500/5 p-3 rounded-lg text-red-100 text-sm mb-4">Error: {error}</div>}
 

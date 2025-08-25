@@ -122,21 +122,10 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
     }
   }
 
-  // Base layout container
   return (
-    <div className="container flex-grow py-8">
-      <header className="text-center mb-12 text-white/90">
-        <h1 className="text-5xl md:text-6xl font-extrabold mb-4 drop-shadow-lg">DM Templates</h1>
-        <p className="text-xl md:text-2xl text-white/80 max-w-2xl mx-auto mb-6">Craft the welcome message sent to new members.</p>
-        {process.env.NODE_ENV !== 'production' && (
-          <div className="text-lg text-white/60">
-            Installed for: <span className="font-medium text-white">{creatorId || '—'}</span>
-          </div>
-        )}
-      </header>
-
+    <div className="space-y-4"> {/* Removed container flex-grow py-8 and header, replaced with simple div and space-y-4 */}
       {unresolved && (
-        <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-4 shadow-xl mt-4 mb-8 max-w-3xl mx-auto text-red-300 text-center">
+        <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-4 shadow-xl mb-4 max-w-3xl mx-auto text-red-300 text-center">
           <div className="font-semibold mb-1">Unresolved Creator ID</div>
           <p className="text-sm text-white/80 dark:text-white/70">You must finish setup on the Home screen to manage DM templates.</p>
           <Link href="/app" className="mt-2 text-xs underline underline-offset-2 text-white/80 hover:text-white">Go to Home</Link>

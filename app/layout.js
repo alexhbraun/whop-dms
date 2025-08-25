@@ -1,5 +1,6 @@
 import './globals.css';
 import { Inter } from 'next/font/google';
+import Header from '@/components/Header'; // Import the new Header component
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
@@ -11,10 +12,11 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${inter.variable} h-full`}>
-      <body className="min-h-full flex flex-col items-center justify-center p-4 antialiased text-white/90">
-        <div className="container">
+      <body className="min-h-full flex flex-col antialiased text-white/90 bg-gradient-to-br from-[#120a2e] to-[#2a1a5a]"> {/* Removed centering, added flex-col, and background gradient */}
+        <Header /> {/* Render the global header here */}
+        <main className="flex-grow w-full max-w-5xl mx-auto px-4"> {/* Main content area with flexible height and spacing */}
           {children}
-        </div>
+        </main>
       </body>
     </html>
   );
