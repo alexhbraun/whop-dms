@@ -9,7 +9,7 @@ export async function GET(req: Request) {
   if (!slug) return NextResponse.json({ ok:false, error:'missing slug' }, { status:400 });
 
   const supabase = getServerSupabase();
-  const { data: row } = await supabase
+  const { data: row, error } = await supabase
     .from('community_map')
     .select('business_id, community_slug')
     .eq('community_slug', slug)
@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 
   if (error) {
     console.error('Error fetching from community_map:', error);
-    // Do not expose raw DB errors to client in production
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
   if (row?.business_id) {
