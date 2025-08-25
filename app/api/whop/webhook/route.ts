@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 // import { createClient } from '@supabase/supabase-js'; // Not needed for server-side webhook, using supabaseAdmin
 import Mustache from 'mustache'; // For template rendering
 
-import { supabaseAdmin } from '../../../../lib/supabaseAdmin'; // Adjust path as needed
+import { getServerSupabase } from '../../../../lib/supabaseServer'; // Adjust path as needed
 
 const APP_BASE_URL = process.env.APP_BASE_URL;
 const MAGIC_LINK_SECRET = process.env.MAGIC_LINK_SECRET;
@@ -49,7 +49,8 @@ export async function POST(req: Request) {
       const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-      const { data: insertData, error: insertError } = await supabaseAdmin
+      const supabase = getServerSupabase();
+      const { data: insertData, error: insertError } = await supabase
         .from('onboarding_invites')
         .insert({
           creator_id: creatorId,

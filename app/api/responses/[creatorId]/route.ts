@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '../../../../lib/supabaseAdmin'; // Adjust path as needed
+import { getServerSupabase } from '../../../../lib/supabaseServer'; // Adjust path as needed
 
 export async function POST(req: Request, { params }: { params: { creatorId: string } }) {
   const { creatorId } = params;
@@ -10,7 +10,8 @@ export async function POST(req: Request, { params }: { params: { creatorId: stri
   }
 
   try {
-    const { data, error } = await supabaseAdmin
+    const supabase = getServerSupabase();
+    const { data, error } = await supabase
       .from('leads')
       .insert({
         community_id: creatorId,

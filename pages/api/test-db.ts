@@ -1,38 +1,52 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { supabaseAdmin } from '../../lib/supabaseAdmin';
+import { getServerSupabase } from '../../lib/supabaseServer';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+type Data = { success: boolean; message?: string; testData?: any; error?: string };
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse<Data>) {
   if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
+    res.setHeader('Allow', ['GET']);
+    return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
+  const communityId = req.query.community_id as string || 'default_community_1'; // Use a default for testing
+
   try {
-    // Insert a new row
-    const { data: insertData, error: insertError } = await supabaseAdmin
-      .from('test_table')
-      .insert([{ message: 'Hello from API' }])
+    const supabase = getServerSupabase();
+    // Test insert (optional, for write testing)
+    const { data: insertData, error: insertError } = await supabase
+      .from('test_table') // Replace 'test_table' with an actual table in your DB or create one.
+      .insert([{
+        community_id: communityId,
+        test_key: 'value_from_api',
+        created_at: new Date().toISOString()
+      }])
       .select();
 
     if (insertError) {
-      console.error('Insert error:', insertError);
-      return res.status(500).json({ error: insertError.message });
+      console.error('Supabase insert test error:', insertError);
+      // return res.status(500).json({ success: false, error: insertError.message });
     }
 
-    // Select the last 5 rows
-    const { data: selectData, error: selectError } = await supabaseAdmin
-      .from('test_table')
+    // Test select
+    const { data: selectData, error: selectError } = await supabase
+      .from('test_table') // Replace 'test_table'
       .select('*')
-      .order('created_at', { ascending: false })
+      .eq('community_id', communityId)
       .limit(5);
 
     if (selectError) {
-      console.error('Select error:', selectError);
-      return res.status(500).json({ error: selectError.message });
+      console.error('Supabase select test error:', selectError);
+      throw new Error(selectError.message);
     }
 
-    res.status(200).json({ inserted: insertData[0], latestFive: selectData });
-  } catch (err: any) {
-    console.error('Catch error:', err);
-    res.status(500).json({ error: err.message });
+    return res.status(200).json({
+      success: true,
+      message: 'Supabase connection and operations successful!',
+      testData: selectData,
+    });
+  } catch (error: any) {
+    console.error('API Error:', error);
+    return res.status(500).json({ success: false, error: error.message || 'An unexpected error occurred.' });
   }
 }

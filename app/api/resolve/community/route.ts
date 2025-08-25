@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabaseAdmin'; // Use supabaseAdmin for server-side
+import { getServerSupabase } from '@/lib/supabaseServer';
 
+// If you have a Whop API to resolve slug -> business_id, wire it here.
+// For now, we only use the cache and fall back to env default.
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const slug = url.searchParams.get('slug');
-  if (!slug) return NextResponse.json({ ok: false, error: 'missing slug' }, { status: 400 });
+  if (!slug) return NextResponse.json({ ok:false, error:'missing slug' }, { status:400 });
 
-  const supabase = supabaseAdmin; // Use the server-side admin client
-  const { data: row, error } = await supabase
+  const supabase = getServerSupabase();
+  const { data: row } = await supabase
     .from('community_map')
     .select('business_id, community_slug')
     .eq('community_slug', slug)

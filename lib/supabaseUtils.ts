@@ -1,19 +1,17 @@
-import { supabaseAdmin } from './supabaseAdmin';
+import { getServerSupabase } from './supabaseServer';
 
-export type CommunitySettings = {
-  id: number;
+interface CommunitySettings {
   community_id: string;
   logo_url: string | null;
   primary_color: string | null;
   secondary_color: string | null;
   welcome_message_title: string | null;
   welcome_message_body: string | null;
-  created_at: string;
-  updated_at: string;
-};
+}
 
 export async function getCommunitySettings(communityId: string): Promise<CommunitySettings | null> {
-  const { data, error } = await supabaseAdmin
+  const supabase = getServerSupabase();
+  const { data, error } = await supabase
     .from('community_settings')
     .select('*')
     .eq('community_id', communityId)
@@ -29,19 +27,14 @@ export async function getCommunitySettings(communityId: string): Promise<Communi
 
 export async function updateCommunitySettings(
   communityId: string,
-  settings: Partial<Omit<CommunitySettings, 'id' | 'community_id' | 'created_at' | 'updated_at'>>
+  settings: Partial<Omit<CommunitySettings, 'community_id' | 'created_at' | 'updated_at'>>
 ): Promise<CommunitySettings | null> {
-  const { data, error } = await supabaseAdmin
+  const supabase = getServerSupabase();
+  const { data, error } = await supabase
     .from('community_settings')
-    .upsert(
-      {
-        community_id: communityId,
-        ...settings,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'community_id' }
-    )
-    .select('*')
+    .update({ ...settings, updated_at: new Date().toISOString() })
+    .eq('community_id', communityId)
+    .select()
     .single();
 
   if (error) {

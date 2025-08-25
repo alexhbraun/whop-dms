@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { supabaseAdmin } from '../../lib/supabaseAdmin'; // Corrected path
+import { getServerSupabase } from '../../lib/supabaseServer'; // Corrected path
 
 export type DMTemplateStep = {
   step_order: number;
@@ -13,7 +13,9 @@ export type DMTemplate = {
   id: number;
   community_id: string;
   name: string;
-  steps: DMTemplateStep[];
+  subject: string;
+  body: string;
+  is_default: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -36,8 +38,9 @@ export default async function handler(
   switch (req.method) {
     case 'GET':
       try {
+        const supabase = getServerSupabase();
         if (templateId) { // Fetch single template
-          const { data, error } = await supabaseAdmin
+          const { data, error } = await supabase
             .from('dm_templates')
             .select('*')
             .eq('community_id', communityId)
@@ -47,7 +50,8 @@ export default async function handler(
           if (error) throw error;
           return res.status(200).json({ success: true, data: data as DMTemplate });
         } else { // Fetch all templates for a community
-          const { data, error } = await supabaseAdmin
+          const supabase = getServerSupabase();
+          const { data, error } = await supabase
             .from('dm_templates')
             .select('*')
             .eq('community_id', communityId)
@@ -63,17 +67,20 @@ export default async function handler(
 
     case 'POST':
       try {
-        const { name, steps } = req.body;
-        if (!name || !steps) {
-          return res.status(400).json({ success: false, error: 'Name and steps are required.' });
+        const { name, subject, body, is_default } = req.body;
+        if (!name || !body) {
+          return res.status(400).json({ success: false, error: 'Name and body are required.' });
         }
 
-        const { data, error } = await supabaseAdmin
+        const supabase = getServerSupabase();
+        const { data, error } = await supabase
           .from('dm_templates')
           .insert({
             community_id: communityId,
             name,
-            steps,
+            subject,
+            body,
+            is_default: is_default || false,
           })
           .select('*')
           .single();
@@ -90,16 +97,16 @@ export default async function handler(
         return res.status(400).json({ success: false, error: 'Template ID is required for updating.' });
       }
       try {
-        const { name, steps } = req.body;
-        if (!name && !steps) { // Allow partial updates
-          return res.status(400).json({ success: false, error: 'No update data provided.' });
-        }
+        const { name, subject, body, is_default } = req.body;
 
-        const updatePayload: Partial<DMTemplate> = { updated_at: new Date().toISOString() };
-        if (name) updatePayload.name = name;
-        if (steps) updatePayload.steps = steps;
+        const updatePayload: Partial<Omit<DMTemplate, 'id' | 'community_id' | 'created_at'>> = { updated_at: new Date().toISOString() };
+        if (name !== undefined) updatePayload.name = name;
+        if (subject !== undefined) updatePayload.subject = subject;
+        if (body !== undefined) updatePayload.body = body;
+        if (is_default !== undefined) updatePayload.is_default = is_default;
 
-        const { data, error } = await supabaseAdmin
+        const supabase = getServerSupabase();
+        const { data, error } = await supabase
           .from('dm_templates')
           .update(updatePayload)
           .eq('community_id', communityId)
@@ -119,7 +126,8 @@ export default async function handler(
         return res.status(400).json({ success: false, error: 'Template ID is required for deleting.' });
       }
       try {
-        const { error } = await supabaseAdmin
+        const supabase = getServerSupabase();
+        const { error } = await supabase
           .from('dm_templates')
           .delete()
           .eq('community_id', communityId)

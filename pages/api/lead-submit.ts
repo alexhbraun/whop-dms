@@ -1,27 +1,42 @@
 // pages/api/lead-submit.ts
 
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { verifyToken, type TokenPayload } from 'lib/token';
-import { supabase } from '../../lib/supabaseServer';
-import { supabaseAdmin } from '../../lib/supabaseAdmin';
+import { getServerSupabase } from '../../lib/supabaseServer'; // Using getServerSupabase
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') return res.status(405).end();
+type Data = { success: boolean; message?: string; error?: string };
 
-  // get bearer token from header or cookie
-  const auth = req.headers.authorization ?? '';
-  const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-  const cookieToken = (req.cookies && (req.cookies['token'] || req.cookies['x-token'])) || '';
-  const token = bearer || cookieToken;
+export default async function handler(req: NextApiRequest, res: NextApiResponse<Data>) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
 
-  // now verify using the token string
-  const payload = (await verifyToken(token)) as TokenPayload | null;
-  if (!payload) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  const { community_id, name, email } = req.body;
 
-  const { email, memberId } = (req.body ?? {}) as { email?: string; memberId?: string };
-  if (!email || !memberId) return res.status(400).json({ ok: false, error: 'missing fields' });
+  if (!community_id || !name || !email) {
+    return res.status(400).json({ success: false, error: 'Community ID, Name, and Email are required.' });
+  }
 
-  // …do your Supabase writes with supabaseAdmin…
+  try {
+    const supabase = getServerSupabase();
+    const { data, error } = await supabase
+      .from('leads')
+      .insert([{
+        community_id,
+        name,
+        email,
+        // Add other lead fields as necessary
+      }])
+      .select();
 
-  return res.json({ ok: true });
+    if (error) {
+      console.error('Supabase insert error:', error);
+      throw new Error(error.message);
+    }
+
+    return res.status(200).json({ success: true, message: 'Lead submitted successfully!', data });
+  } catch (error: any) {
+    console.error('API Error:', error);
+    return res.status(500).json({ success: false, error: error.message || 'An unexpected error occurred.' });
+  }
 }

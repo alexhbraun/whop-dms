@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { getServerSupabase } from '@/lib/supabaseServer';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -10,7 +10,8 @@ export async function GET(request: Request) {
   }
 
   try {
-    const { data, error } = await supabaseAdmin
+    const supabase = getServerSupabase();
+    const { data, error } = await supabase
       .from('onboarding_questions') // Assuming a table named 'onboarding_questions'
       .select('*')
       .eq('community_id', community_id)
@@ -45,7 +46,8 @@ export async function POST(request: Request) {
     }
 
     // Get the current highest order_index for this community
-    const { data: maxOrderData, error: maxOrderError } = await supabaseAdmin
+    const supabase = getServerSupabase();
+    const { data: maxOrderData, error: maxOrderError } = await supabase
       .from('onboarding_questions')
       .select('order_index')
       .eq('community_id', community_id)
@@ -59,7 +61,7 @@ export async function POST(request: Request) {
 
     const newOrderIndex = (maxOrderData && maxOrderData.length > 0) ? maxOrderData[0].order_index + 1 : 0;
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from('onboarding_questions')
       .insert({
         community_id,
@@ -99,8 +101,9 @@ export async function PUT(request: Request) {
     const { label, key, type, is_required, options, order_index, updates } = body;
 
     if (updates && Array.isArray(updates)) { // Handle reorder request
+      const supabase = getServerSupabase();
       const batchUpdatePromises = updates.map((update: { id: string; order_index: number }) =>
-        supabaseAdmin
+        supabase
           .from('onboarding_questions')
           .update({ order_index: update.order_index })
           .eq('id', update.id)
@@ -117,7 +120,8 @@ export async function PUT(request: Request) {
         return NextResponse.json({ success: false, error: 'Label, key, and type are required' }, { status: 400 });
       }
 
-      const { data, error } = await supabaseAdmin
+      const supabase = getServerSupabase();
+      const { data, error } = await supabase
         .from('onboarding_questions')
         .update({
           label,
@@ -155,7 +159,8 @@ export async function DELETE(request: Request) {
   }
 
   try {
-    const { error } = await supabaseAdmin
+    const supabase = getServerSupabase();
+    const { error } = await supabase
       .from('onboarding_questions')
       .delete()
       .eq('id', id)

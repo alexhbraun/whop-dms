@@ -1,177 +1,136 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import { sendWhopDM } from "../../../lib/whopClient";
-import { supabaseAdmin } from "../../../lib/supabaseAdmin";
-import { DMTemplate, DMTemplateStep } from '../../api/dm-templates'; // Corrected import path and type
+import { NextApiRequest, NextApiResponse } from 'next';
+import { URLSearchParams } from 'url';
+import { logWhopConfigSummary } from '../../../lib/whopConfig';
+import { getServerSupabase } from "../../../lib/supabaseServer";
 
-type SuccessResponse = {
-  ok: true;
-};
-
-type ErrorResponse = {
-  ok: false;
-  reason?: string; // Make reason optional or remove if not always present
-  diagnostics?: any[]; // Make diagnostics optional or remove if not always present
-  error?: string;
-  status?: number;
-  body?: string;
-};
-
-function diag(label: string, data: any) {
-  const safe = JSON.stringify(data, null, 2);
-  console.log(`[WHOP_INSTALL] ${label}: ${safe.length > 1800 ? safe.slice(0, 1800) + '...<truncated>' : safe}`);
+interface WhopInstallation {
+  community_id: string;
+  access_token: string;
+  refresh_token: string;
+  token_expires_at: string;
+  creator_profile: any; // Store the entire creator profile as JSONB
+  created_at?: string;
+  updated_at?: string;
 }
 
-// --- Main Handler ---
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<SuccessResponse | ErrorResponse>
-) {
-  if (req.method !== 'GET') {
-    res.setHeader('Allow', 'GET');
-    return res.status(405).json({ ok: false, reason: 'method_not_allowed' });
+interface WhopCreatorProfile {
+  id: string;
+  username: string;
+  name: string;
+  profile_pic_url: string;
+}
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  logWhopConfigSummary();
+
+  const { code, error: authError, error_description } = req.query;
+
+  if (authError) {
+    console.error('[WHOP_INSTALL] OAuth Error:', authError, error_description);
+    return res.status(400).send(`OAuth Error: ${error_description || authError}`);
   }
 
-  const code = req.query.code as string | undefined;
-  if (!code) {
-    return res.status(400).json({ ok: false, reason: 'missing_code' });
+  if (!code || typeof code !== 'string') {
+    return res.status(400).send('Missing authorization code.');
   }
-  console.log(`[WHOP_INSTALL] Received authorization code: ${code ? `${code.substring(0, 8)}...${code.substring(code.length - 8)}` : 'N/A'}`);
 
-  const REDIRECT_URI = process.env.WHOP_REDIRECT_URI || `https://${req.headers.host}/api/whop/install`;
+  const { WHOP_CLIENT_ID, WHOP_CLIENT_SECRET, WHOP_REDIRECT_URI } = process.env;
 
-  const client_id_log = process.env.WHOP_CLIENT_ID ? `${process.env.WHOP_CLIENT_ID.substring(0, 4)}...${process.env.WHOP_CLIENT_ID.substring(process.env.WHOP_CLIENT_ID.length - 4)}` : 'N/A';
-  const client_secret_log = process.env.WHOP_CLIENT_SECRET ? `${process.env.WHOP_CLIENT_SECRET.substring(0, 4)}...${process.env.WHOP_CLIENT_SECRET.substring(process.env.WHOP_CLIENT_SECRET.length - 4)}` : 'N/A';
-  const basicAuthString = Buffer.from(`${process.env.WHOP_CLIENT_ID!}:${process.env.WHOP_CLIENT_SECRET!}`).toString('base64');
-  const maskedBasicAuthString = basicAuthString ? `${basicAuthString.substring(0, 8)}...${basicAuthString.substring(basicAuthString.length - 8)}` : 'N/A';
-  console.log(`[WHOP_INSTALL] Attempting token exchange with: client_id=${client_id_log}, client_secret=${client_secret_log}, redirect_uri=${REDIRECT_URI}, Basic Auth Header (masked): Basic ${maskedBasicAuthString}`);
+  if (!WHOP_CLIENT_ID || !WHOP_CLIENT_SECRET || !WHOP_REDIRECT_URI) {
+    console.error('[WHOP_INSTALL] Missing environment variables for Whop OAuth.');
+    return res.status(500).send('Server configuration error. Missing Whop API credentials.');
+  }
 
-  const tokenResponse = await fetch('https://whop.com/api/v2/oauth/token', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Authorization': `Basic ${Buffer.from(`${process.env.WHOP_CLIENT_ID!}:${process.env.WHOP_CLIENT_SECRET!}`).toString('base64')}`,
-    },
-    body: new URLSearchParams({
+  try {
+    // 1. Exchange authorization code for tokens
+    const params = new URLSearchParams({
+      client_id: WHOP_CLIENT_ID,
+      client_secret: WHOP_CLIENT_SECRET,
+      code,
+      redirect_uri: WHOP_REDIRECT_URI,
       grant_type: 'authorization_code',
-      code: code, // the authorization code from URL params
-      redirect_uri: REDIRECT_URI
-    })
-  });
-
-  // Log the response for debugging
-  console.log('Token exchange response:', tokenResponse.status);
-  const responseBody = await tokenResponse.text();
-  console.log('Response body:', responseBody);
-
-  if (!tokenResponse.ok) {
-    return res.status(500).json({
-      ok: false,
-      error: 'Token exchange failed',
-      status: tokenResponse.status,
-      body: responseBody
     });
-  }
 
-  // Parse the successful response
-  const tokenData = JSON.parse(responseBody);
-  console.log('Token received:', tokenData.access_token ? 'YES' : 'NO');
-
-  if (!tokenData.access_token) {
-    console.error('[WHOP_INSTALL] Token exchange did not return an access_token.', tokenData);
-    return res.status(500).json({ ok: false, error: 'Token exchange failed: No access token.', body: responseBody });
-  }
-
-  // --- 2. Fetch Creator Profile ---
-  console.log('[WHOP_INSTALL] Fetching creator profile...');
-  const meResponse = await fetch('https://whop.com/api/v2/me', {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${tokenData.access_token}`,
-    },
-  });
-
-  const meData = await meResponse.json();
-  console.log('[WHOP_INSTALL] Whop /v2/me response:', meData);
-
-  if (!meResponse.ok || !meData.member || !meData.member.id || !meData.member.community_id) {
-    console.error('[WHOP_INSTALL] Failed to fetch creator profile or missing required data.', meData);
-    return res.status(500).json({
-      ok: false,
-      error: 'Failed to retrieve creator profile or community info.',
-      status: meResponse.status,
-      body: JSON.stringify(meData),
-    });
-  }
-
-  const memberId = meData.member.id;
-  const communityId = meData.member.community_id;
-  const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString(); // Calculate expiry
-
-  // --- 3. Save Installation Data to Supabase ---
-  console.log('[WHOP_INSTALL] Saving installation data to Supabase...');
-  const { data: installData, error: installError } = await supabaseAdmin
-    .from('whop_installations')
-    .upsert(
-      {
-        community_id: communityId,
-        member_id: memberId,
-        access_token: tokenData.access_token,
-        refresh_token: tokenData.refresh_token,
-        expires_at: expiresAt,
+    const tokenResponse = await fetch('https://whop.com/api/v2/oauth/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        // Basic Auth header has been problematic, trying without for now as per previous debugging.
+        // Authorization: `Basic ${Buffer.from(`${WHOP_CLIENT_ID}:${WHOP_CLIENT_SECRET}`).toString('base64')}`,
       },
-      { onConflict: 'member_id', ignoreDuplicates: false }
-    )
-    .select('*')
-    .single();
+      body: params.toString(),
+    });
 
-  if (installError) {
-    console.error('[WHOP_INSTALL] Supabase installation save error:', installError);
-    return res.status(500).json({ ok: false, error: 'Failed to save installation data.' });
+    if (!tokenResponse.ok) {
+      const errorData = await tokenResponse.json();
+      console.error('[WHOP_INSTALL] Token exchange failed:', errorData);
+      // Log all headers for debugging
+      Array.from(tokenResponse.headers.entries()).forEach(([key, value]) => {
+        console.error(`[WHOP_INSTALL] Token Response Header - ${key}: ${value}`);
+      });
+      return res.status(tokenResponse.status).send(`Failed to exchange token: ${errorData.message || JSON.stringify(errorData)}`);
+    }
+
+    const tokenData = await tokenResponse.json();
+    const { access_token, refresh_token, expires_in, scope, token_type } = tokenData;
+
+    if (!access_token) {
+      console.error('[WHOP_INSTALL] Access token not received:', tokenData);
+      return res.status(500).send('Access token not received from Whop.');
+    }
+
+    // 2. Fetch creator profile using the access token
+    const creatorProfileResponse = await fetch('https://whop.com/api/v2/me', {
+      headers: {
+        'Authorization': `Bearer ${access_token}`,
+      },
+    });
+
+    if (!creatorProfileResponse.ok) {
+      const errorData = await creatorProfileResponse.json();
+      console.error('[WHOP_INSTALL] Failed to fetch creator profile:', errorData);
+      return res.status(creatorProfileResponse.status).send(`Failed to fetch creator profile: ${errorData.message || JSON.stringify(errorData)}`);
+    }
+
+    const creatorProfile: WhopCreatorProfile = await creatorProfileResponse.json();
+    const community_id = creatorProfile.id; // Whop's 'me' endpoint returns the creator's ID which is effectively the community_id for a single creator app
+
+    if (!community_id) {
+      console.error('[WHOP_INSTALL] Creator ID (community_id) not found in profile:', creatorProfile);
+      return res.status(500).send('Creator ID not found in Whop profile.');
+    }
+
+    const tokenExpiresAt = new Date(Date.now() + expires_in * 1000).toISOString();
+
+    // 3. Save installation data to Supabase
+    const supabase = getServerSupabase();
+    const { data: installData, error: installError } = await supabase
+      .from<WhopInstallation>('whop_installations')
+      .upsert(
+        {
+          community_id: community_id,
+          access_token: access_token,
+          refresh_token: refresh_token,
+          token_expires_at: tokenExpiresAt,
+          creator_profile: creatorProfile, // Store entire profile
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'community_id' }
+      )
+      .select();
+
+    if (installError) {
+      console.error('[WHOP_INSTALL] Supabase upsert error:', installError);
+      return res.status(500).send(`Failed to save installation data: ${installError.message}`);
+    }
+
+    console.log('[WHOP_INSTALL] Installation successful for community:', community_id);
+
+    // 4. Redirect to the app dashboard
+    res.redirect(302, `/app?community_id=${community_id}`);
+
+  } catch (error: any) {
+    console.error('[WHOP_INSTALL] Unexpected error during installation:', error);
+    return res.status(500).send(`Installation failed: ${error.message || 'Unknown error'}`);
   }
-  console.log('[WHOP_INSTALL] Installation data saved to Supabase.', installData);
-
-  // --- 4. Construct and Send Questions via Whop DM ---
-  let questionsMessage = `Welcome to the community! Please complete your onboarding by providing some details.`;
-
-  // Fetch DM templates for the community
-  const { data: dmTemplates, error: dmTemplatesError } = await supabaseAdmin
-    .from('dm_templates')
-    .select('*')
-    .eq('community_id', communityId)
-    .order('created_at', { ascending: true })
-    .limit(1);
-
-  if (dmTemplatesError) {
-    console.error('[WHOP_INSTALL] Error fetching DM templates:', dmTemplatesError);
-    // Proceed with default message if templates can't be fetched
-  } else if (dmTemplates && dmTemplates.length > 0) {
-    const template: DMTemplate = dmTemplates[0];
-    const templateQuestions = template.steps.map((step: DMTemplateStep, index: number) => {
-      let question = `${index + 1}. ${step.question_text}`;
-      if (step.require_email) {
-        question += ' (Email required)'; // Indicate email is required for this step
-      }
-      return question;
-    }).join('\n');
-    questionsMessage = `Welcome to the community! To help us get to know you better, please answer a few questions:\n\n${templateQuestions}\n\nThanks!`;
-  } else {
-    console.log('[WHOP_INSTALL] No custom DM templates found for community. Using default message.');
-  }
-
-  console.log(`[WHOP_INSTALL] Sending welcome DM to member ${memberId}...`);
-  const dmResult = await sendWhopDM({
-    toMemberId: memberId,
-    text: questionsMessage,
-  });
-
-  if (!dmResult.ok) {
-    console.error('[WHOP_INSTALL] Failed to send welcome DM:', dmResult.error);
-    // Decide if this should be a fatal error or just logged
-  }
-  console.log('[WHOP_INSTALL] Welcome DM send result:', dmResult);
-
-  // --- 5. Redirect ---
-  console.log('[WHOP_INSTALL] Redirecting to dashboard...');
-  res.setHeader('Location', `/dashboard/settings?installed=1&community_id=${communityId}`);
-  return res.status(302).json({ ok: true });
 }

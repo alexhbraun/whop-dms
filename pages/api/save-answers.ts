@@ -1,10 +1,14 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { supabaseAdmin } from '../../lib/supabaseAdmin';
-import { whopConfig } from '../../lib/whopConfig';
-import { verifyToken, type TokenPayload } from 'lib/token';
+import { getServerSupabase } from '../../lib/supabaseServer';
+import { verifyToken, TokenPayload } from 'lib/token'; // Assuming verifyToken is still used
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') return res.status(405).end();
+type Data = { success: boolean; message?: string; error?: string };
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse<Data>) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
 
   // get bearer token from header or cookie
   const auth = req.headers.authorization ?? '';
@@ -14,19 +18,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // now verify using the token string
   const payload = (await verifyToken(token)) as TokenPayload | null;
-  if (!payload) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  if (!payload) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-  const { memberId, answers } = req.body ?? {};
-  if (!memberId || !Array.isArray(answers)) return res.status(400).json({ ok: false, error: 'bad input' });
+  const { community_id, answers } = req.body;
 
-  const { error } = await supabaseAdmin.from('answers').insert({
-    member_id: memberId,
-    answers,
-    biz_id: payload.bizId ?? null,
-  });
+  if (!community_id || !answers) {
+    return res.status(400).json({ success: false, error: 'Community ID and answers are required.' });
+  }
 
-  if (error) return res.status(500).json({ ok: false, error: error.message });
+  try {
+    const supabase = getServerSupabase();
+    const { error } = await supabase.from('answers').insert({
+      community_id,
+      member_id: payload.memberId, // Assuming memberId is in the token payload
+      ...answers,
+    });
 
-  return res.status(200).json({ ok: true, base: whopConfig.APP_BASE_URL });
+    if (error) {
+      console.error('Supabase insert error:', error);
+      throw new Error(error.message);
+    }
+
+    return res.status(200).json({ success: true, message: 'Answers saved successfully!' });
+  } catch (error: any) {
+    console.error('API Error:', error);
+    return res.status(500).json({ success: false, error: error.message || 'An unexpected error occurred.' });
+  }
 }
 

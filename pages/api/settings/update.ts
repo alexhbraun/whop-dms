@@ -1,64 +1,43 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { supabaseAdmin } from '../../../lib/supabaseAdmin';
-import { verifyToken, type TokenPayload } from 'lib/token';
-import { whopConfig } from '../../../lib/whopConfig';
+import { getServerSupabase } from '../../../lib/supabaseServer';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+type Data = { success: boolean; message?: string; error?: string };
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse<Data>) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method Not Allowed' });
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  // Robust token extraction (works on Vercel + Node)
-  const rawAuth =
-    (Array.isArray(req.headers.authorization)
-      ? req.headers.authorization[0]
-      : req.headers.authorization) ||
-    (Array.isArray((req.headers as any)['x-authorization'])
-      ? (req.headers as any)['x-authorization'][0]
-      : (req.headers as any)['x-authorization']) ||
-    (typeof req.query.token === 'string' ? req.query.token : '') ||
-    (typeof (req.body as any)?.token === 'string' ? (req.body as any).token : '');
-
-  const auth = typeof rawAuth === 'string' ? rawAuth : '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : auth;
-
-  if (!token) {
-    return res.status(400).json({ ok: false, error: 'no token' });
-  }
-
-  const payloadResult = verifyToken(token);
-
-  if (!payloadResult.ok) {
-    return res.status(401).json({ message: `Invalid or expired token: ${payloadResult.reason}.` });
-  }
-
-  // Assuming the token payload contains community_id or similar identifier
-  const community_id = (payloadResult.data as any)?.community_id; // Adjust type as per your TokenPayload
+  const { community_id, webhook_url, email_required, branding_logo_url, branding_primary_color, branding_secondary_color } = req.body;
 
   if (!community_id) {
-    return res.status(400).json({ error: 'Token missing community ID' });
-  }
-
-  const { settings } = req.body; // Expecting a 'settings' object in the request body
-
-  if (typeof settings !== 'object' || settings === null) {
-    return res.status(400).json({ error: 'Invalid settings payload' });
+    return res.status(400).json({ success: false, error: 'Community ID is required.' });
   }
 
   try {
-    const { data, error } = await supabaseAdmin.from('installations').update(
-      { settings: settings }
-    ).eq('community_id', community_id);
+    const updatePayload: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (webhook_url !== undefined) updatePayload.webhook_url = webhook_url;
+    if (email_required !== undefined) updatePayload.email_required = email_required;
+    if (branding_logo_url !== undefined) updatePayload.branding_logo_url = branding_logo_url;
+    if (branding_primary_color !== undefined) updatePayload.branding_primary_color = branding_primary_color;
+    if (branding_secondary_color !== undefined) updatePayload.branding_secondary_color = branding_secondary_color;
+
+    const supabase = getServerSupabase();
+    const { data, error } = await supabase.from('installations').update(updatePayload)
+      .eq('community_id', community_id)
+      .select()
+      .single();
 
     if (error) {
-      console.error('Error updating settings:', error);
-      return res.status(500).json({ message: 'Failed to update settings', details: error.message });
+      console.error('Supabase update error:', error);
+      throw new Error(error.message);
     }
 
-    return res.status(200).json({ ok: true, message: 'Settings updated successfully' });
+    return res.status(200).json({ success: true, message: 'Settings updated successfully!', data });
   } catch (error: any) {
-    console.error('Exception updating settings:', error);
-    return res.status(500).json({ message: 'Internal server error', details: error.message });
+    console.error('API Error:', error);
+    return res.status(500).json({ success: false, error: error.message || 'An unexpected error occurred.' });
   }
 }
 
