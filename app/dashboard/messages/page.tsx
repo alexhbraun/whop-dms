@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import useCreatorId from '@/components/useCreatorId';
+import InfoCard from '@/components/InfoCard'; // Import InfoCard
 
 interface MessagesPageProps {
   searchParams: { [key: string]: string | string[] | undefined };
@@ -164,60 +165,65 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
       </div>
 
       {/* Editor */}
-      <div className="md:col-span-2 rounded-2xl border border-white/10 bg-white/10 backdrop-blur-xl p-4">
-        {!current ? (
-          <div className="text-white/70">Select a template to edit.</div>
-        ) : (
-          <>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <input
-                value={draftName}
-                onChange={(e)=>setDraftName(e.target.value)}
-                className="flex-1 rounded-lg border border-white/20 bg-white/70 dark:bg-white/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                placeholder="Template name"
-              />
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={draftDefault} onChange={(e)=>setDraftDefault(e.target.checked)} />
-                Set as default
-              </label>
-            </div>
-
-            <textarea
-              value={draftContent}
-              onChange={(e)=>setDraftContent(e.target.value)}
-              rows={10}
-              className="mt-3 w-full font-mono text-sm rounded-lg border border-white/20 bg-white/70 dark:bg-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              placeholder="Write your welcome message…"
-            />
-
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-3 text-xs text-white/80">
-              <div>
-                <span className="opacity-80">Variables:</span>{' '}
-                <code>{'{{member_name}}'}</code>, <code>{'{{community_name}}'}</code>, <code>{'{{onboarding_link}}'}</code>
+      <div className="md:col-span-2 space-y-4"> {/* Changed to space-y-4 to add space between InfoCard and editor */}
+        <InfoCard /> {/* Mount InfoCard above the editor content */}
+        <div className="rounded-2xl border border-white/10 bg-white/10 backdrop-blur-xl p-4">
+          {!current ? (
+            <div className="text-white/70">Select a template to edit.</div>
+          ) : (
+            <>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  value={draftName}
+                  onChange={(e)=>setDraftName(e.target.value)}
+                  className="flex-1 rounded-lg border border-white/20 bg-white/70 dark:bg-white/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  placeholder="Template name"
+                />
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={draftDefault} onChange={(e)=>setDraftDefault(e.target.checked)} />
+                  Set as default
+                </label>
               </div>
-              <div>{draftContent.length} chars</div>
-            </div>
 
-            {err && <div className="mt-2 text-sm text-red-300">{err}</div>}
+              <textarea
+                value={draftContent}
+                onChange={(e)=>setDraftContent(e.target.value)}
+                rows={10}
+                className="mt-3 w-full font-mono text-sm rounded-lg border border-white/20 bg-white/70 dark:bg-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                placeholder="Write your welcome message…"
+              />
 
-            <div className="mt-4 flex gap-2">
-              <button
-                onClick={save}
-                disabled={saving}
-                className="rounded-lg px-4 py-2 text-sm text-white bg-indigo-600 disabled:opacity-50 hover:bg-indigo-700 transition"
-              >
-                {saving ? 'Saving…' : 'Save (⌘/Ctrl+S)'}
-              </button>
-              <button
-                onClick={del}
-                disabled={saving}
-                className="rounded-lg px-4 py-2 text-sm text-white/90 border border-white/20 hover:bg-white/10"
-              >
-                Delete
-              </button>
-            </div>
-          </>
-        )}
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-3 text-xs text-white/80">
+                <div>
+                  <span className="opacity-80">Variables:</span>{' '}
+                  <code className="rounded bg-white/10 px-1.5 py-0.5">{'{{member_name}}'}</code>,
+                  <code className="rounded bg-white/10 px-1.5 py-0.5">{'{{community_name}}'}</code>,
+                  <code className="rounded bg-white/10 px-1.5 py-0.5">{'{{onboarding_link}}'}</code>
+                </div>
+                <div>{draftContent.length} chars</div>
+              </div>
+
+              {err && <div className="mt-2 text-sm text-red-300">{err}</div>}
+
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={save}
+                  disabled={saving}
+                  className="rounded-lg px-4 py-2 text-sm text-white bg-indigo-600 disabled:opacity-50 hover:bg-indigo-700 transition"
+                >
+                  {saving ? 'Saving…' : 'Save (⌘/Ctrl+S)'}
+                </button>
+                <button
+                  onClick={del}
+                  disabled={saving}
+                  className="rounded-lg px-4 py-2 text-sm text-white/90 border border-white/20 hover:bg-white/10"
+                >
+                  Delete
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
