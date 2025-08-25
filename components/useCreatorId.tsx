@@ -27,30 +27,28 @@ export default function useCreatorId(searchParams: ReadonlyURLSearchParams | nul
     if (qId) {
       try { localStorage.setItem(KEY_ID, qId); } catch (e) { console.warn('localStorage set error (qId):', e); }
       setContext(c => ({ ...c, source: 'query' }));
+      console.log('[useCreatorId] Resolved from query:', qId);
       return;
     }
 
    (async function resolve() {
-      // 2) localStorage (already resolved before)
-      try {
-        const savedId = localStorage.getItem(KEY_ID);
-        const savedSlug = localStorage.getItem(KEY_SLUG);
-        console.log('[useCreatorId] From localStorage: savedId:', savedId, 'savedSlug:', savedSlug);
-        if (savedId) {
-          setCreatorId(savedId);
-          setContext({ source: 'local', slug: savedSlug });
-          return;
-        }
-      } catch (e) { console.warn('localStorage get error:', e); }
-
-      // 3) Parse community slug from URL (embedded iframe)
+      // 2) Parse community slug from URL (embedded iframe)
       // Prefer parent referrer; fallback to current location.
       let slug: string | null = null;
-      try { slug = extractCommunitySlugFromUrl(document.referrer); } catch (e) { console.warn('Error getting slug from referrer:', e); }
-      console.log('[useCreatorId] Slug from referrer:', slug);
+      try {
+        if (typeof document !== 'undefined' && document.referrer) {
+          slug = extractCommunitySlugFromUrl(document.referrer);
+          console.log('[useCreatorId] Slug from referrer:', slug);
+        }
+      } catch (e) { console.warn('Error getting slug from referrer:', e); }
+
       if (!slug) {
-        try { slug = extractCommunitySlugFromUrl(window.location.href); } catch (e) { console.warn('Error getting slug from window.location:', e); }
-        console.log('[useCreatorId] Slug from window.location:', slug);
+        try {
+          if (typeof window !== 'undefined' && window.location.href) {
+            slug = extractCommunitySlugFromUrl(window.location.href);
+            console.log('[useCreatorId] Slug from window.location:', slug);
+          }
+        } catch (e) { console.warn('Error getting slug from window.location:', e); }
       }
 
       if (slug) {
@@ -67,16 +65,35 @@ export default function useCreatorId(searchParams: ReadonlyURLSearchParams | nul
             setCreatorId(data.business_id);
             try { localStorage.setItem(KEY_ID, data.business_id); } catch (e) { console.warn('localStorage set error (resolved ID):', e); }
             setContext({ source: `resolver:${data.source || 'cache'}`, slug });
+            console.log('[useCreatorId] Resolved from slug resolver:', data.business_id);
             return;
           }
         } catch (e) { console.warn('Error resolving slug to business_id:', e); }
       }
+
+      // 3) localStorage (already resolved before) - now a fallback
+      try {
+        const savedId = localStorage.getItem(KEY_ID);
+        const savedSlug = localStorage.getItem(KEY_SLUG);
+        console.log('[useCreatorId] Falling back to localStorage: savedId:', savedId, 'savedSlug:', savedSlug);
+        if (savedId) {
+          setCreatorId(savedId);
+          setContext({ source: 'local', slug: savedSlug });
+          console.log('[useCreatorId] Resolved from localStorage:', savedId);
+          return;
+        }
+      } catch (e) { console.warn('localStorage get error:', e); }
 
       // 4) Final fallback: env default
       if (process.env.NEXT_PUBLIC_WHOP_COMPANY_ID) {
         console.log('[useCreatorId] Falling back to env variable:', process.env.NEXT_PUBLIC_WHOP_COMPANY_ID);
         setCreatorId(process.env.NEXT_PUBLIC_WHOP_COMPANY_ID);
         setContext(c => ({ ...c, source: 'env_fallback' }));
+        console.log('[useCreatorId] Resolved from env fallback:', process.env.NEXT_PUBLIC_WHOP_COMPANY_ID);
+      } else {
+        console.log('[useCreatorId] No creatorId resolved, setting to null.');
+        setCreatorId(null);
+        setContext(c => ({ ...c, source: 'none', slug: null }));
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
