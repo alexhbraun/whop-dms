@@ -9,22 +9,33 @@ export default function BindHostBanner({
   const [biz, setBiz] = useState('');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string|null>(null);
-  const disabled = !biz || loading || !/^biz_/i.test(biz.trim());
+  const [showHelp, setShowHelp] = useState(false);
+  const disabled = !/^biz_/i.test(biz.trim()) || loading;
 
   async function bind() {
     setErr(null);
     setLoading(true);
     try {
       const res = await fetch('/api/resolve/host', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ host, business_id: biz.trim() }),
       });
-      const j = await res.json();
-      if (!res.ok || !j.ok) throw new Error(j?.error || 'Binding failed');
+      let payload: any = null;
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('application/json')) {
+        payload = await res.json().catch(() => ({}));
+      } else {
+        // tolerate empty or non‑JSON responses
+        await res.text().catch(() => '');
+        payload = {};
+      }
+      if (!res.ok || (payload && payload.ok === false)) {
+        throw new Error((payload && payload.error) || `Request failed (${res.status})`);
+      }
       location.reload();
-    } catch (e:any) {
-      setErr(e.message);
+    } catch (e: any) {
+      setErr(e?.message || 'Binding failed');
     } finally {
       setLoading(false);
     }
@@ -53,7 +64,25 @@ export default function BindHostBanner({
         </button>
       </div>
       {err && <div className="mt-2 text-sm text-red-300">{err}</div>}
-      <p className="mt-2 text-xs text-white/60">Tip: Only needed once per community. Future loads resolve automatically.</p>
+      <button
+        type="button"
+        onClick={() => setShowHelp(v => !v)}
+        className="mt-2 text-xs underline underline-offset-2 text-white/80 hover:text-white"
+      >
+        {showHelp ? 'Hide help' : 'Where do I find this?'}
+      </button>
+      {showHelp && (
+        <div className="mt-2 text-xs text-white/80 space-y-1 rounded-lg border border-white/10 bg-white/5 p-3">
+          <p><span className="font-semibold">What is a Business ID?</span> It’s the unique code for your community on Whop. You’ll paste it here once.</p>
+          <ol className="list-decimal ms-5 space-y-1">
+            <li>Open Whop in another tab and go to your <span className="font-medium">Business Dashboard</span>.</li>
+            <li>Look at the <span className="font-medium">URL</span> in your browser. Example: <code>https://whop.com/business/biz_ABC12345</code></li>
+            <li>Copy the part that starts with <code>biz_</code> (e.g., <code>biz_ABC12345</code>).</li>
+            <li>Paste it here and press <span className="font-medium">Bind</span>.</li>
+          </ol>
+          <p className="opacity-80">Tip: You only do this once per community. Future visits work automatically.</p>
+        </div>
+      )}
     </div>
   );
 }
