@@ -1,6 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { verifyToken, TokenPayload } from 'lib/token';
-import { supabase } from '../../lib/supabaseServer';
+import { getServerSupabase } from '../../lib/supabaseServer';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
@@ -40,6 +40,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // Fetch questions from settings table based on communityId
+  const supabase = getServerSupabase();
   const { data: settings, error: settingsError } = await supabase
     .from('settings')
     .select('questions')

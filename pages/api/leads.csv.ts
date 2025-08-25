@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { supabase } from '../../lib/supabaseServer';
+import { getServerSupabase } from '../../lib/supabaseServer';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
@@ -13,6 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    const supabase = getServerSupabase();
     const { data: leads, error } = await supabase
       .from('leads')
       .select('member_name, email, q1_response, q2_response, q3_response, created_at')
