@@ -3,7 +3,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getServerSupabase } from '../../lib/supabaseServer'; // Using getServerSupabase
 
-type Data = { success: boolean; message?: string; error?: string };
+type Data = { success: boolean; message?: string; error?: string; data?: any };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse<Data>) {
   if (req.method !== 'POST') {
