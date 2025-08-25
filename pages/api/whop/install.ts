@@ -105,7 +105,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // 3. Save installation data to Supabase
     const supabase = getServerSupabase();
     const { data: installData, error: installError } = await supabase
-      .from<WhopInstallation>('whop_installations')
+      .from('whop_installations')
       .upsert(
         {
           community_id: community_id,

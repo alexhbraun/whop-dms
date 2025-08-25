@@ -4,6 +4,8 @@ import { Formidable } from 'formidable';
 import path from 'path';
 import fs from 'fs';
 
+const uploadDir = path.join(process.cwd(), './tmp'); // Define uploadDir here
+
 // Set up Supabase client for admin actions (server-side)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_KEY; // Use SUPABASE_SERVICE_KEY
@@ -31,8 +33,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ success: false, error: 'Community ID is required.' });
   }
 
-  const form = formidable({
-    uploadDir: path.join(process.cwd(), './tmp'), // Temporary directory for uploads
+  const form = new Formidable({
+    uploadDir: uploadDir, // Use the defined uploadDir variable
     keepExtensions: true,
     maxFileSize: 5 * 1024 * 1024, // 5MB limit
     filename: (name, ext, part) => {
@@ -41,9 +43,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   });
 
-  fs.mkdirSync(form.uploadDir, { recursive: true });
+  // No need to call fs.mkdirSync(form.uploadDir) here anymore
 
   try {
+    fs.mkdirSync(uploadDir, { recursive: true }); // Ensure the directory exists before parsing
     const [fields, files] = await form.parse(req);
     const file = files.logo?.[0];
 
@@ -87,8 +90,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ success: false, error: error.message || 'Internal server error.' });
   } finally {
     // Ensure tmp directory is cleaned up in case of error during parsing
-    if (fs.existsSync(form.uploadDir)) {
-      fs.rmSync(form.uploadDir, { recursive: true, force: true });
+    if (fs.existsSync(uploadDir)) {
+      fs.rmSync(uploadDir, { recursive: true, force: true });
     }
   }
 }
