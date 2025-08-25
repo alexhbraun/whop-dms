@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import useCreatorId from '@/components/useCreatorId';
 import InfoCard from '@/components/InfoCard'; // Import InfoCard
+import Link from 'next/link'; // Explicitly import Link
 
 interface MessagesPageProps {
   searchParams: { [key: string]: string | string[] | undefined };
@@ -16,7 +17,7 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
   const [draftDefault, setDraftDefault] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string|null>(null);
-  const [busy, setBusy] = useState(false); // Kept from previous to manage "Create First Template" button
+  const [busy, setBusy] = useState(false);
 
   async function load() {
     if (!creatorId) return;
@@ -113,7 +114,6 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok || j.ok === false) throw new Error(j.error || `Request failed (${res.status})`);
       await load();
-      // TODO: set selected template = j.id if you have an editor pane
       setSelectedId(j.id); // Select the newly created template
     } catch (e:any) {
       setErr(e.message || 'Could not create template.');
@@ -122,107 +122,122 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
     }
   }
 
-  // empty state kept as before (not repeated here) …
-  if ((templates?.length ?? 0) === 0) {
-    return (
-      <div className="mx-auto max-w-3xl">
-        <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-6 text-center">
-          <div className="text-lg font-semibold mb-2">No DM Templates Yet</div>
-          <p className="text-sm text-white/80 mb-4">Start by creating your first welcome message template.</p>
-          <button
-            onClick={createFirstTemplate}
-            disabled={busy || unresolved}
-            className="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-white text-sm hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {busy ? 'Creating…' : '＋ Create First Template'}
-          </button>
-          {err && <div className="mt-3 text-sm text-red-300">{err}</div>}
-          <div className="mt-4">
-            <a href={`/app${creatorId ? `?community_id=${encodeURIComponent(creatorId)}` : ''}`} className="text-white/80 underline">← Back to App</a>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  // Base layout container
   return (
-    <div className="mx-auto max-w-5xl grid grid-cols-1 md:grid-cols-3 gap-4">
-      {/* List */}
-      <div className="md:col-span-1 space-y-2">
-        {templates.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setSelectedId(t.id)}
-            className={`w-full text-left rounded-xl border p-3 backdrop-blur-xl ${selectedId === t.id ? 'border-indigo-400 bg-white/15' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="font-medium">{t.name}</div>
-              {t.is_default ? <span className="text-xs text-green-300">default</span> : null}
+    <div className="container flex-grow py-8">
+      <header className="text-center mb-12 text-white/90">
+        <h1 className="text-5xl md:text-6xl font-extrabold mb-4 drop-shadow-lg">DM Templates</h1>
+        <p className="text-xl md:text-2xl text-white/80 max-w-2xl mx-auto mb-6">Craft the welcome message sent to new members.</p>
+        {process.env.NODE_ENV !== 'production' && (
+          <div className="text-lg text-white/60">
+            Installed for: <span className="font-medium text-white">{creatorId || '—'}</span>
+          </div>
+        )}
+      </header>
+
+      {unresolved && (
+        <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-4 shadow-xl mt-4 mb-8 max-w-3xl mx-auto text-red-300 text-center">
+          <div className="font-semibold mb-1">Unresolved Creator ID</div>
+          <p className="text-sm text-white/80 dark:text-white/70">You must finish setup on the Home screen to manage DM templates.</p>
+          <Link href="/app" className="mt-2 text-xs underline underline-offset-2 text-white/80 hover:text-white">Go to Home</Link>
+        </div>
+      )}
+
+      {/* Main content grid */}
+      <div className="mx-auto max-w-5xl grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        {/* List Column */}
+        <div className="md:col-span-1 space-y-2">
+          {templates.length === 0 ? (
+            <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-6 text-center">
+              <div className="text-lg font-semibold mb-2">No DM Templates Yet</div>
+              <p className="text-sm text-white/80 mb-4">Start by creating your first welcome message template.</p>
+              <button
+                onClick={createFirstTemplate}
+                disabled={busy || unresolved}
+                className="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-white text-sm hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {busy ? 'Creating…' : '＋ Create First Template'}
+              </button>
+              {err && <div className="mt-3 text-sm text-red-300">{err}</div>}
             </div>
-            <div className="text-xs text-white/70 mt-1 line-clamp-2">{t.content}</div>
-          </button>
-        ))}
-      </div>
-
-      {/* Editor */}
-      <div className="md:col-span-2 space-y-4"> {/* Changed to space-y-4 to add space between InfoCard and editor */}
-        <InfoCard /> {/* Mount InfoCard above the editor content */}
-        <div className="rounded-2xl border border-white/10 bg-white/10 backdrop-blur-xl p-4">
-          {!current ? (
-            <div className="text-white/70">Select a template to edit.</div>
           ) : (
-            <>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <input
-                  value={draftName}
-                  onChange={(e)=>setDraftName(e.target.value)}
-                  className="flex-1 rounded-lg border border-white/20 bg-white/70 dark:bg-white/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  placeholder="Template name"
-                />
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={draftDefault} onChange={(e)=>setDraftDefault(e.target.checked)} />
-                  Set as default
-                </label>
-              </div>
-
-              <textarea
-                value={draftContent}
-                onChange={(e)=>setDraftContent(e.target.value)}
-                rows={10}
-                className="mt-3 w-full font-mono text-sm rounded-lg border border-white/20 bg-white/70 dark:bg-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                placeholder="Write your welcome message…"
-              />
-
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-3 text-xs text-white/80">
-                <div>
-                  <span className="opacity-80">Variables:</span>{' '}
-                  <code className="rounded bg-white/10 px-1.5 py-0.5">{'{{member_name}}'}</code>,
-                  <code className="rounded bg-white/10 px-1.5 py-0.5">{'{{community_name}}'}</code>,
-                  <code className="rounded bg-white/10 px-1.5 py-0.5">{'{{onboarding_link}}'}</code>
+            templates.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setSelectedId(t.id)}
+                className={`w-full text-left rounded-xl border p-3 backdrop-blur-xl ${selectedId === t.id ? 'border-indigo-400 bg-white/15' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="font-medium">{t.name}</div>
+                  {t.is_default ? <span className="text-xs text-green-300">default</span> : null}
                 </div>
-                <div>{draftContent.length} chars</div>
-              </div>
-
-              {err && <div className="mt-2 text-sm text-red-300">{err}</div>}
-
-              <div className="mt-4 flex gap-2">
-                <button
-                  onClick={save}
-                  disabled={saving}
-                  className="rounded-lg px-4 py-2 text-sm text-white bg-indigo-600 disabled:opacity-50 hover:bg-indigo-700 transition"
-                >
-                  {saving ? 'Saving…' : 'Save (⌘/Ctrl+S)'}
-                </button>
-                <button
-                  onClick={del}
-                  disabled={saving}
-                  className="rounded-lg px-4 py-2 text-sm text-white/90 border border-white/20 hover:bg-white/10"
-                >
-                  Delete
-                </button>
-              </div>
-            </>
+                <div className="text-xs text-white/70 mt-1 line-clamp-2">{t.content}</div>
+              </button>
+            ))
           )}
+        </div>
+
+        {/* Editor Column */}
+        <div className="md:col-span-2 space-y-4">
+          <InfoCard />
+          <div className="rounded-2xl border border-white/10 bg-white/10 backdrop-blur-xl p-4">
+            {!current ? (
+              <div className="text-white/70">Select a template to edit.</div>
+            ) : (
+              <>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <input
+                    value={draftName}
+                    onChange={(e)=>setDraftName(e.target.value)}
+                    className="flex-1 rounded-lg border border-white/20 bg-white/70 dark:bg-white/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    placeholder="Template name"
+                  />
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={draftDefault} onChange={(e)=>setDraftDefault(e.target.checked)} />
+                    Set as default
+                  </label>
+                </div>
+
+                <textarea
+                  value={draftContent}
+                  onChange={(e)=>setDraftContent(e.target.value)}
+                  rows={10}
+                  className="mt-3 w-full font-mono text-sm rounded-lg border border-white/20 bg-white/70 dark:bg-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  placeholder="Write your welcome message…"
+                />
+
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-3 text-xs text-white/80">
+                  <div>
+                    <span className="opacity-80">Variables:</span>{' '}
+                    <code className="rounded bg-white/10 px-1.5 py-0.5">{'{{member_name}}'}</code>,
+                    <code className="rounded bg-white/10 px-1.5 py-0.5">{'{{community_name}}'}</code>,
+                    <code className="rounded bg-white/10 px-1.5 py-0.5">{'{{onboarding_link}}'}</code>
+                  </div>
+                  <div>{draftContent.length} chars</div>
+                </div>
+
+                {err && <div className="mt-2 text-sm text-red-300">{err}</div>}
+
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={save}
+                    disabled={saving}
+                    className="rounded-lg px-4 py-2 text-sm text-white bg-indigo-600 disabled:opacity-50 hover:bg-indigo-700 transition"
+                  >
+                    {saving ? 'Saving…' : 'Save (⌘/Ctrl+S)'}
+                  </button>
+                  <button
+                    onClick={del}
+                    disabled={saving}
+                    className="rounded-lg px-4 py-2 text-sm text-white/90 border border-white/20 hover:bg-white/10"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -185,16 +185,6 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
 
   if (loading) return <div className="text-white/70 text-center py-12">Loading questions...</div>;
 
-  if (unresolved) {
-    return (
-      <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-4 shadow-xl mt-4 max-w-3xl mx-auto">
-        <div className="font-semibold mb-1">Finish setup</div>
-        <p className="text-sm text-white/80 dark:text-white/70">Finish setup on the Home screen to connect this app to your Whop Business.</p>
-        <Link href="/app" className="mt-2 text-xs underline underline-offset-2 text-white/80 hover:text-white">Go to Home</Link>
-      </div>
-    );
-  }
-
   return (
     <div className="container flex-grow py-8">
       <header className="text-center mb-12 text-white/90">
@@ -207,6 +197,14 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
         )}
       </header>
 
+      {unresolved && (
+        <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-4 shadow-xl mb-8 max-w-3xl mx-auto text-red-300 text-center">
+          <div className="font-semibold mb-1">Finish setup</div>
+          <p className="text-sm text-white/80 dark:text-white/70">You must finish setup on the Home screen to manage onboarding questions.</p>
+          <Link href="/app" className="mt-2 text-xs underline underline-offset-2 text-white/80 hover:text-white">Go to Home</Link>
+        </div>
+      )}
+
       <div className="max-w-5xl mx-auto space-y-4"> {/* Main content container */}
         <InfoCardQuestions /> {/* Info panel here */}
 
@@ -215,7 +213,7 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
         <div className="glass-card rounded-2xl p-6 shadow-xl space-y-6">
           <button
             onClick={handleAddQuestion}
-            disabled={saving}
+            disabled={saving || unresolved}
             className="btn w-full flex items-center justify-center"
           >
             <PlusIcon className="h-5 w-5 mr-2" /> Add Question
@@ -224,27 +222,27 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
           <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
             <SortableContext items={questions.map(q => q.id)} strategy={verticalListSortingStrategy}>
               <div className="space-y-4">
-                {questions.map(q => (
-                  <QuestionItem
-                    key={q.id}
-                    question={q}
-                    onQuestionChange={handleQuestionChange}
-                    onDeleteQuestion={handleDeleteQuestion}
-                    saving={saving}
-                  />
-                ))}
+                {questions.length > 0 ? (
+                  questions.map(q => (
+                    <QuestionItem
+                      key={q.id}
+                      question={q}
+                      onQuestionChange={handleQuestionChange}
+                      onDeleteQuestion={handleDeleteQuestion}
+                      saving={saving || unresolved}
+                    />
+                  ))
+                ) : (
+                  <p className="text-white/70 text-center mt-6">No questions added yet. Click "Add Question" to start.</p>
+                )}
               </div>
             </SortableContext>
           </DndContext>
 
-          {questions.length === 0 && (
-            <p className="text-white/70 text-center mt-6">No questions added yet. Click "Add Question" to start.</p>
-          )}
-
           <div className="flex justify-end gap-3 mt-6">
             <button
               onClick={handleSaveQuestions}
-              disabled={saving || questions.some(q => !q.text.trim() || (q.type.includes('select') && (!q.options || q.options.length === 0)))}
+              disabled={saving || unresolved || questions.some(q => !q.text.trim() || (q.type.includes('select') && (!q.options || q.options.length === 0)))}
               className="btn bg-indigo-600 hover:bg-indigo-700"
             >
               {saving ? (
