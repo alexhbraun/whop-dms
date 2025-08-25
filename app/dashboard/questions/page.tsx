@@ -456,11 +456,16 @@ function OnboardingQuestionsPageContent() {
                 value={editorState.label}
                 onChange={(e) => setEditorState(s => {
                   const newLabel = e.target.value;
-                  const newKeySlug = s.key_slug || initialEditorState.key_slug; // Only auto-generate if key_slug is empty or initial
+                  let updatedKeySlug = s.key_slug;
+
+                  if (s.id === null || s.key_slug === '') {
+                    updatedKeySlug = newLabel.toLowerCase().replace(/[^a-z0-9_]/g, '');
+                  }
+
                   return {
                     ...s,
                     label: newLabel,
-                    key_slug: newKeySlug === initialEditorState.key_slug ? newLabel.toLowerCase().replace(/[^a-z0-9_]/g, '') : newKeySlug,
+                    key_slug: updatedKeySlug,
                   };
                 })}
                 placeholder="e.g., What are your goals?"
@@ -469,7 +474,7 @@ function OnboardingQuestionsPageContent() {
               />
               {validationErrors.label && <p className="text-red-300 text-xs mt-1">{validationErrors.label}</p>}
             </div>
-            <div>
+            <div className="hidden">
               <label htmlFor="questionKey" className="block text-sm font-medium mb-1">Key (Unique ID)</label>
               <input
                 type="text"
@@ -499,7 +504,7 @@ function OnboardingQuestionsPageContent() {
                     options: (newType === 'select' || newType === 'multiselect') ? s.options : [], // Clear options if type changes
                   }));
                 }}
-                className="w-full p-3 rounded-lg bg-white/10 text-white/90 border border-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200"
+                className="w-full p-3 rounded-lg bg-gray-800 text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200"
                 disabled={isFormDisabled}
               >
                 <option value="text">Text Input</option>
