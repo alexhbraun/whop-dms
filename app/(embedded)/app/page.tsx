@@ -45,35 +45,31 @@ function AppHomeContent() {
   // Removed bindBusinessId, bindError, isBinding state - now handled by BindHostBanner
 
   return (
-    <div className="container flex-grow py-8">
-      <header className="text-center mb-12 text-white/90">
-        <h1 className="text-5xl md:text-6xl font-extrabold mb-4 drop-shadow-lg">Whop DMS: Elevate Your Community Experience</h1>
-        {!unresolved && creatorId && (
-          <div className="mt-2">
-            <span className="inline-flex items-center rounded-full bg-green-600/20 px-3 py-1 text-xs font-medium text-green-300">
-              ✅ Connected to Business: <code className="ml-1">{
-                creatorId
-              }</code>
-            </span>
-          </div>
-        )}
-        <p className="text-xl md:text-2xl text-white/80 max-w-2xl mx-auto mb-6">Capture leads, configure your Whop integration, and track results.</p>
-        {process.env.NODE_ENV !== 'production' && (
-          <p className="text-xs text-white/60 mt-1">
-            Installed for: {creatorId || '—'} · host: {host || '—'} · source: {source}
-          </p>
-        )}
-      </header>
+    <div className="py-8"> {/* Removed redundant container and flex-grow, added py-8 for overall vertical spacing */}
+      {!unresolved && creatorId && (
+        <div className="mt-2 text-center">
+          <span className="inline-flex items-center rounded-full bg-green-600/20 px-3 py-1 text-xs font-medium text-green-300">
+            ✅ Connected to Business: <code className="ml-1">{
+              creatorId
+            }</code>
+          </span>
+        </div>
+      )}
+      {process.env.NODE_ENV !== 'production' && (
+        <p className="text-xs text-white/60 mt-4 text-center">
+          Installed for: {creatorId || '—'} · host: {host || '—'} · source: {source}
+        </p>
+      )}
 
       {unresolved && host && (
-        <div className="max-w-5xl mx-auto mt-4">
+        <div className="mt-8 max-w-5xl mx-auto"> {/* Added mt-8 for spacing from global header */}
           <BindHostBanner host={host} />
         </div>
       )}
 
       {/* Removed the old conditional amber card for missing Community ID */}
 
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4"> {/* Added mt-8 for spacing from above content */}
         <DashboardCard
           title="Settings"
           description="Webhook, email requirement, and branding options."

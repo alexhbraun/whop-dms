@@ -16,7 +16,7 @@
   }
 
   body {
-    @apply min-h-screen flex flex-col items-center justify-center;
+    @apply min-h-screen flex flex-col;
     /* This ensures the content is centered and takes full height */
     height: 100%;
     width: 100%;
