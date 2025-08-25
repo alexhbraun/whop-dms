@@ -1,461 +1,105 @@
 'use client';
-import { Suspense, useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react'; // Added useCallback
 import useCreatorId from '@/components/useCreatorId';
-import LinkWithId from '@/components/LinkWithId';
-import { ArrowPathIcon, CheckIcon, PlusIcon, TrashIcon, SparklesIcon } from '@heroicons/react/24/outline';
-import Mustache from 'mustache';
-import { useSearchParams } from 'next/navigation'; // Import useSearchParams
+import Link from 'next/link';
 
-interface DMTemplate {
-  id: string;
-  community_id: string;
-  name: string;
-  subject: string;
-  body: string;
-  is_default: boolean;
-  created_at: string;
+interface MessagesPageProps {
+  searchParams: { [key: string]: string | string[] | undefined };
 }
 
-interface EditorState {
-  id: string | null;
-  name: string;
-  subject: string;
-  body: string;
-  is_default: boolean;
-}
+export default function MessagesPage({ searchParams }: MessagesPageProps) {
+  const { creatorId, unresolved } = useCreatorId(searchParams);
+  const [templates, setTemplates] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null); // New state for selected template
 
-const mockVariables = {
-  member_name: "Alex",
-  community_name: "Demo Community",
-  onboarding_link: "https://example.com/onboarding/demo-community?memberId=123&t=mocktoken",
-};
-
-function MessagesPageContent() {
-  const searchParams = useSearchParams();
-  const { creatorId, host, source, unresolved } = useCreatorId(searchParams); // Updated destructuring
-  const [templates, setTemplates] = useState<DMTemplate[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
-  const [editorState, setEditorState] = useState<EditorState>({
-    id: null,
-    name: '',
-    subject: '',
-    body: '',
-    is_default: false,
-  });
-  const [loading, setLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [validationErrors, setValidationErrors] = useState<{ name?: string; body?: string }>({});
-  const [busy, setBusy] = useState(false); // New state for template creation button
-  const [err, setErr] = useState<string | null>(null); // New state for template creation errors
-
-  const selectTemplateByName = useCallback((name: string) => {
-    const template = templates.find(t => t.name === name);
-    if (template) {
-      setSelectedTemplateId(template.id);
-    }
-  }, [templates]);
-
-  const fetchTemplates = useCallback(async () => {
+  const load = useCallback(async () => {
     if (!creatorId) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/dm-templates?community_id=${creatorId}`);
-      if (!res.ok) throw new Error('Failed to fetch templates');
-      const data = await res.json();
-      if (data.success) {
-        setTemplates(data.data);
-        // Select default or first template if available after fetching
-        if (!selectedTemplateId && data.data.length > 0) {
-          const defaultTemplate = data.data.find((t: DMTemplate) => t.is_default);
-          setSelectedTemplateId(defaultTemplate ? defaultTemplate.id : data.data[0].id);
-        }
-      } else {
-        console.error('Error fetching templates:', data.error);
-      }
-    } catch (error) {
-      console.error('Fetch templates error:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [creatorId, selectedTemplateId]);
+    const r = await fetch(`/api/templates/${encodeURIComponent(creatorId)}`);
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.templates) setTemplates(j.templates); // Make sure 'templates' is actually on 'j'
+  }, [creatorId]);
 
-  const createFirstTemplate = async () => {
+  useEffect(() => {
+    load();
+  }, [load]); // Depend on load
+
+  async function createFirstTemplate() {
     setErr(null);
-    if (!creatorId || unresolved) {
-      setErr('Please finish setup first (connect to your Whop Business).');
-      return;
-    }
+    if (!creatorId || unresolved) { setErr('Finish setup first.'); return; }
     setBusy(true);
     try {
-      const payload = {
-        name: 'Welcome Message',
-        subject: 'Welcome to {{community_name}}!',
-        content: 'Hi {{member_name}}, welcome to {{community_name}}! Tap here to answer a couple of quick questions: {{onboarding_link}}',
-        is_default: true
-      };
-      const res = await fetch(`/api/dm-templates?community_id=${encodeURIComponent(creatorId)}`, {
+      const res = await fetch(`/api/templates/${encodeURIComponent(creatorId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          name: 'Welcome Message',
+          content: 'Hi {{member_name}}, welcome to {{community_name}}! Tap here to answer a couple of quick questions: {{onboarding_link}}',
+          is_default: true
+        }),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.error || `Request failed (${res.status})`);
-      // Refresh list + select new template
-      await fetchTemplates();
-      selectTemplateByName('Welcome Message'); // focus the editor on it if available
+      if (!res.ok || j.ok === false) throw new Error(j.error || `Request failed (${res.status})`);
+      await load();
+      setSelectedTemplateId(j.id); // Optionally: scroll to editor or set selected template id = j.id
     } catch (e: any) {
-      console.error('Create first template error:', e);
       setErr(e.message || 'Could not create template.');
     } finally {
       setBusy(false);
     }
-  };
-
-  useEffect(() => {
-    if (creatorId) {
-      fetchTemplates();
-    }
-  }, [creatorId, fetchTemplates]);
-
-  useEffect(() => {
-    if (selectedTemplateId) {
-      const template = templates.find(t => t.id === selectedTemplateId);
-      if (template) {
-        setEditorState({
-          id: template.id,
-          name: template.name,
-          subject: template.subject,
-          body: template.body,
-          is_default: template.is_default,
-        });
-        setValidationErrors({}); // Clear errors when selecting a template
-      }
-    } else {
-      // Clear editor if no template is selected (e.g., after deletion or 'New template')
-      setEditorState({ id: null, name: '', subject: '', body: '', is_default: false });
-      setValidationErrors({});
-    }
-  }, [selectedTemplateId, templates]);
-
-  const handleNewTemplate = () => {
-    setSelectedTemplateId(null);
-    setEditorState({ id: null, name: '', subject: '', body: '', is_default: false });
-    setValidationErrors({});
-  };
-
-  const validateForm = () => {
-    const errors: { name?: string; body?: string } = {};
-    if (!editorState.name.trim()) errors.name = 'Template name is required.';
-    if (!editorState.body.trim()) errors.body = 'Template content (body) is required.';
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleSaveTemplate = async () => {
-    if (!creatorId || !validateForm()) return;
-
-    setIsSaving(true);
-    setSaveStatus('saving');
-    const method = editorState.id ? 'PUT' : 'POST';
-    const url = editorState.id
-      ? `/api/dm-templates?community_id=${creatorId}&id=${editorState.id}`
-      : `/api/dm-templates?community_id=${creatorId}`;
-
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editorState.name,
-          subject: editorState.subject,
-          body: editorState.body,
-          is_default: editorState.is_default,
-        }),
-      });
-
-      if (!res.ok) throw new Error('Failed to save template');
-      const data = await res.json();
-      if (data.success) {
-        setSaveStatus('saved');
-        await fetchTemplates(); // Re-fetch to update list and ensure consistency
-        if (!editorState.id) {
-          setSelectedTemplateId(data.data.id); // Select the newly created template
-        }
-      } else {
-        throw new Error(data.error || 'Unknown error');
-      }
-    } catch (error) {
-      console.error('Save template error:', error);
-      setSaveStatus('error');
-    } finally {
-      setIsSaving(false);
-      setTimeout(() => setSaveStatus('idle'), 3000); // Clear status after a few seconds
-    }
-  };
-
-  const handleDeleteTemplate = async (id: string) => {
-    if (!creatorId || !confirm('Are you sure you want to delete this template?')) return;
-
-    setIsSaving(true); // Re-use saving state for deletion feedback
-    setSaveStatus('saving');
-    try {
-      const res = await fetch(`/api/dm-templates?community_id=${creatorId}&id=${id}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) throw new Error('Failed to delete template');
-      const data = await res.json();
-      if (data.success) {
-        setSaveStatus('saved');
-        setSelectedTemplateId(null); // Deselect after deletion
-        await fetchTemplates();
-      } else {
-        throw new Error(data.error || 'Unknown error');
-      }
-    } catch (error) {
-      console.error('Delete template error:', error);
-      setSaveStatus('error');
-    } finally {
-      setIsSaving(false);
-      setTimeout(() => setSaveStatus('idle'), 3000);
-    }
-  };
-
-  const handleMakeDefault = async (id: string) => {
-    if (!creatorId) return;
-
-    setIsSaving(true);
-    setSaveStatus('saving');
-    try {
-      const res = await fetch(`/api/dm-templates?community_id=${creatorId}&id=${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_default: true }),
-      });
-      if (!res.ok) throw new Error('Failed to set default template');
-      const data = await res.json();
-      if (data.success) {
-        setSaveStatus('saved');
-        await fetchTemplates(); // Re-fetch to update default status
-      } else {
-        throw new Error(data.error || 'Unknown error');
-      }
-    } catch (error) {
-      console.error('Make default template error:', error);
-      setSaveStatus('error');
-    } finally {
-      setIsSaving(false);
-      setTimeout(() => setSaveStatus('idle'), 3000);
-    }
-  };
-
-  const livePreview = useMemo(() => {
-    try {
-      return Mustache.render(editorState.body, mockVariables);
-    } catch (e) {
-      return `Error rendering template: ${(e as Error).message}`;
-    }
-  }, [editorState.body]);
-
-  if (loading) {
-    return <div className="text-white/70 text-center py-12">Loading templates...</div>;
   }
 
-  if (templates.length === 0 && !selectedTemplateId) {
-    return (
-      <div className="container flex-grow py-8">
-        <header className="text-center mb-12 text-white/90">
-          <h1 className="text-5xl md:text-6xl font-extrabold mb-4 drop-shadow-lg">DM Templates</h1>
-          <p className="text-xl md:text-2xl text-white/80 max-w-2xl mx-auto mb-6">Craft the welcome message sent to new members.</p>
-          {process.env.NODE_ENV !== 'production' && (
-            <div className="text-lg text-white/60">
-              Installed for: <span className="font-medium text-white">{creatorId || '—'}</span>
-              {host && <span className="text-white/50 ml-2">· host: {host}</span>}
-              {source && <span className="text-white/50 ml-2">· source: {source}</span>}
-            </div>
-          )}
-        </header>
-
-        {unresolved && (
-          <div className="glass-card border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/5 p-4 rounded-lg text-amber-100 text-sm text-center max-w-md mx-auto mb-8 shadow-inner">
-            Finish setup on the Home screen to connect this app to your Whop Business.
-          </div>
-        )}
-
-        <div className="glass-card rounded-2xl p-6 shadow space-y-4 text-white/90 text-center">
-          <h2 className="text-2xl font-semibold">No DM Templates Yet</h2>
-          <p className="text-white/70">Start by creating your first welcome message template.</p>
+  // Empty state
+  if (templates.length === 0) {
+    return (unresolved ? (
+      <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-4 shadow-xl mt-4 max-w-3xl mx-auto">
+        <div className="font-semibold mb-1">Finish setup</div>
+        <p className="text-sm text-white/80 dark:text-white/70">Finish setup on the Home screen to connect this app to your Whop Business.</p>
+        <Link href="/app" className="mt-2 text-xs underline underline-offset-2 text-white/80 hover:text-white">Go to Home</Link>
+      </div>
+    ) : (
+      <div className="mx-auto max-w-3xl">
+        <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-6 text-center">
+          <div className="text-lg font-semibold mb-2">No DM Templates Yet</div>
+          <p className="text-sm text-white/80 mb-4">Start by creating your first welcome message template.</p>
           <button
             onClick={createFirstTemplate}
             disabled={busy || unresolved}
             className="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-white text-sm hover:bg-indigo-700 disabled:opacity-50"
           >
-            <span className="mr-1">＋</span> {busy ? 'Creating…' : 'Create First Template'}
+            {busy ? 'Creating…' : '＋ Create First Template'}
           </button>
-          {err && <div className="mt-2 text-sm text-red-300">{err}</div>}
-          <div className="pt-4">
-            <LinkWithId baseHref="/app" creatorId={creatorId} className="text-sm underline text-white/70 hover:text-white">← Back to App</LinkWithId>
-          </div>
+          {err && <div className="mt-3 text-sm text-red-300">Error: {err}</div>}
         </div>
       </div>
-    );
+    ));
   }
 
+  // ...render the normal two‑pane editor here using `templates`
+  // For now, let's just display a message and the templates for debugging
   return (
-    <div className="container flex-grow py-8">
-      <header className="text-center mb-12 text-white/90">
-        <h1 className="text-5xl md:text-6xl font-extrabold mb-4 drop-shadow-lg">DM Templates</h1>
-        <p className="text-xl md:text-2xl text-white/80 max-w-2xl mx-auto mb-6">Craft the welcome message sent to new members.</p>
-        {process.env.NODE_ENV !== 'production' && (
-          <div className="text-lg text-white/60">
-            Installed for: <span className="font-medium text-white">{creatorId || '—'}</span>
-            {host && <span className="text-white/50 ml-2">· host: {host}</span>}
-            {source && <span className="text-white/50 ml-2">· source: {source}</span>}
-          </div>
-        )}
-      </header>
-
+    <div className="mx-auto max-w-3xl">
+      <h2 className="text-xl font-bold mb-4">DM Templates</h2>
       {unresolved && (
-        <div className="glass-card border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/5 p-4 rounded-lg text-amber-100 text-sm text-center max-w-md mx-auto mb-8 shadow-inner">
-          Finish setup on the Home screen to connect this app to your Whop Business.
+        <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-4 shadow-xl mt-4 mb-4 text-red-300">
+          <div className="font-semibold mb-1">Unresolved Creator ID</div>
+          <p className="text-sm text-white/80 dark:text-white/70">You must finish setup on the Home screen to manage DM templates.</p>
+          <Link href="/app" className="mt-2 text-xs underline underline-offset-2 text-white/80 hover:text-white">Go to Home</Link>
         </div>
       )}
-
-      <div className="grid md:grid-cols-3 gap-6">
-        {/* Left Column: Templates List */}
-        <div className="md:col-span-1 glass-card p-4 rounded-2xl shadow space-y-3 h-[calc(100vh-250px)] overflow-y-auto">
-          <h2 className="text-2xl font-semibold mb-4 text-white/90">Your Templates</h2>
-          <button onClick={handleNewTemplate} className="btn w-full mb-4">
-            <PlusIcon className="h-5 w-5 mr-2" /> New Template
-          </button>
-          {templates.length > 0 ? (
-            <ul className="space-y-2">
-              {templates.map(template => (
-                <li key={template.id}>
-                  <button
-                    onClick={() => setSelectedTemplateId(template.id)}
-                    className={`flex items-center justify-between w-full p-3 rounded-lg text-left transition-colors glass-card
-                      ${selectedTemplateId === template.id ? 'bg-white/20 border-indigo-400' : 'hover:bg-white/10'}
-                    `}
-                  >
-                    <span className="font-medium text-white/90">{template.name}</span>
-                    {template.is_default && (
-                      <span className="ml-2 px-2 py-1 text-xs font-semibold rounded-full bg-indigo-500 text-white">Default</span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-white/70 text-center">No templates found.</p>
-          )}
-        </div>
-
-        {/* Right Column: Editor Panel */}
-        <div className="md:col-span-2 glass-card p-6 rounded-2xl shadow space-y-6 text-white/90">
-          <h2 className="text-2xl font-semibold mb-4 text-white/90">
-            {editorState.id ? 'Edit Template' : 'Create New Template'}
-          </h2>
-
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="templateName" className="block text-sm font-medium mb-1">Template Name</label>
-              <input
-                type="text"
-                id="templateName"
-                value={editorState.name}
-                onChange={(e) => setEditorState(s => ({ ...s, name: e.target.value }))}
-                placeholder="e.g., Welcome Message for New Members"
-                className="w-full"
-                disabled={isSaving || unresolved}
-              />
-              {validationErrors.name && <p className="text-red-300 text-xs mt-1">{validationErrors.name}</p>}
-            </div>
-            <div>
-              <label htmlFor="templateSubject" className="block text-sm font-medium mb-1">Subject Line</label>
-              <input
-                type="text"
-                id="templateSubject"
-                value={editorState.subject}
-                onChange={(e) => setEditorState(s => ({ ...s, subject: e.target.value }))}
-                placeholder="e.g., Welcome to {{community_name}}!"
-                className="w-full"
-                disabled={isSaving || unresolved}
-              />
-            </div>
-            <div>
-              <label htmlFor="templateBody" className="block text-sm font-medium mb-1">Content</label>
-              <textarea
-                id="templateBody"
-                value={editorState.body}
-                onChange={(e) => setEditorState(s => ({ ...s, body: e.target.value }))}
-                rows={8}
-                placeholder="Hi {{member_name}}, welcome to {{community_name}}! ... {{onboarding_link}}"
-                className="w-full"
-                disabled={isSaving || unresolved}
-              />
-              {validationErrors.body && <p className="text-red-300 text-xs mt-1">{validationErrors.body}</p>}
-            </div>
-          </div>
-
-          {/* Live Preview */}
-          <div className="bg-gray-800/50 rounded-lg p-4 mt-6 border border-white/10">
-            <h3 className="text-lg font-semibold mb-2">Live Preview:</h3>
-            <p className="text-sm text-white/70 whitespace-pre-wrap">Subject: {Mustache.render(editorState.subject, mockVariables)}</p>
-            <div className="text-sm text-white/70 whitespace-pre-wrap mt-2" dangerouslySetInnerHTML={{ __html: livePreview.replace(/\n/g, '<br/>') }} />
-          </div>
-
-          <div className="flex flex-wrap justify-end gap-3 pt-4">
-            {editorState.id && !editorState.is_default && (
-              <button
-                onClick={() => handleMakeDefault(editorState.id!)}
-                disabled={isSaving || unresolved}
-                className="btn btn-secondary border-blue-400/20 bg-blue-500/20 hover:bg-blue-500/30 text-blue-100"
-              >
-                <SparklesIcon className="h-5 w-5 mr-2" /> Make Default
-              </button>
-            )}
-            {editorState.id && (
-              <button
-                onClick={() => handleDeleteTemplate(editorState.id!)}
-                disabled={isSaving || unresolved}
-                className="btn btn-secondary border-red-400/20 bg-red-500/20 hover:bg-red-500/30 text-red-100"
-              >
-                <TrashIcon className="h-5 w-5 mr-2" /> Delete
-              </button>
-            )}
-            <button
-              onClick={handleSaveTemplate}
-              disabled={isSaving || unresolved}
-              className="btn bg-indigo-600 hover:bg-indigo-700"
-            >
-              {isSaving ? (
-                <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
-              ) : saveStatus === 'saved' ? (
-                <CheckIcon className="h-5 w-5 mr-2" />
-              ) : (
-                <PlusIcon className="h-5 w-5 mr-2" />
-              )}
-              {editorState.id ? 'Save Changes' : 'Create Template'}
-            </button>
-          </div>
-          {saveStatus === 'saved' && <p className="text-green-300 text-sm mt-2 text-right">Saved ✓</p>}
-          {saveStatus === 'error' && <p className="text-red-300 text-sm mt-2 text-right">Error saving.</p>}
-        </div>
-      </div>
-      <div className="flex justify-center pt-8">
-        <LinkWithId baseHref="/app" creatorId={creatorId} className="text-sm underline text-white/70 hover:text-white">
-          ← Back to App
-        </LinkWithId>
-      </div>
+      {templates.length > 0 && (
+        <ul className="space-y-2">
+          {templates.map((template: any) => (
+            <li key={template.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
+              <div className="font-semibold">Name: {template.name}</div>
+              <div className="text-sm text-white/70">Content: {template.content}</div>
+              <div className="text-xs text-white/50">Default: {template.is_default ? 'Yes' : 'No'}</div>
+              <div className="text-xs text-white/50">ID: {template.id}</div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
-  );
-}
-
-export default function MessagesPage() {
-  return (
-    <Suspense fallback={<div className="text-white/70 text-center py-12">Loading DM templates...</div>}>
-      <MessagesPageContent />
-    </Suspense>
   );
 }
