@@ -7,15 +7,15 @@ import { useState } from 'react';
 
 function LeadsPageContent() {
   const searchParams = useSearchParams();
-  const { creatorId, context } = useCreatorId(searchParams);
+  const { creatorId, host, source, unresolved } = useCreatorId(searchParams); // Updated destructuring
   const [bindBusinessId, setBindBusinessId] = useState<string>('');
   const [bindError, setBindError] = useState<string | null>(null);
   const [isBinding, setIsBinding] = useState<boolean>(false);
 
-  const shouldShowBindCard = !creatorId || context.source === 'env_fallback';
+  const shouldShowBindCard = unresolved; // Simplified condition
 
   const handleBind = async () => {
-    if (!bindBusinessId || !context.host) {
+    if (!bindBusinessId || !host) { // Use host directly
       setBindError('Business ID and Host are required.');
       return;
     }
@@ -31,7 +31,7 @@ function LeadsPageContent() {
       const res = await fetch('/api/resolve/host', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host: context.host, business_id: bindBusinessId }),
+        body: JSON.stringify({ host: host, business_id: bindBusinessId }), // Use host directly
       });
 
       if (!res.ok) {
@@ -51,17 +51,19 @@ function LeadsPageContent() {
       <header className="text-center mb-12 text-white/90">
         <h1 className="text-5xl md:text-6xl font-extrabold mb-4 drop-shadow-lg">Leads</h1>
         <p className="text-xl md:text-2xl text-white/80 max-w-2xl mx-auto mb-6">View and export member responses.</p>
-        <div className="text-lg text-white/60">
-          Installed for: <span className="font-medium text-white">{creatorId || 'detecting…'}</span>
-          {context.host && <span className="text-white/50 ml-2">(host: {context.host})</span>}
-          {context.source && <span className="text-white/50 ml-2">(source: {context.source})</span>}
-        </div>
+        {process.env.NODE_ENV !== 'production' && (
+          <div className="text-lg text-white/60">
+            Installed for: <span className="font-medium text-white">{creatorId || '—'}</span>
+            {host && <span className="text-white/50 ml-2">· host: {host}</span>}
+            {source && <span className="text-white/50 ml-2">· source: {source}</span>}
+          </div>
+        )}
       </header>
 
       {shouldShowBindCard && (
         <div className="glass-card border-purple-500/30 bg-purple-500/10 dark:bg-purple-500/5 p-6 rounded-lg text-purple-100 text-sm max-w-lg mx-auto mb-8 shadow-inner">
           <h3 className="text-xl font-semibold mb-3">Bind this Installation</h3>
-          <p className="mb-4">It looks like your community ID isn't automatically detected. Please enter your Whop Business ID below to bind this installation to your host.</p>
+          <p className="mb-4">It looks like your community ID isn't automatically detected. Please enter your Whop Business ID below to bind this installation to your host. <span className="text-white/60 text-xs mt-1">You only need to do this once per community.</span></p>
           <div className="flex flex-col sm:flex-row gap-3 mb-4">
             <input
               type="text"
@@ -72,18 +74,18 @@ function LeadsPageContent() {
             />
             <button
               onClick={handleBind}
-              disabled={isBinding || !bindBusinessId || !context.host}
+              disabled={isBinding || !bindBusinessId || !host}
               className="px-6 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isBinding ? 'Binding…' : 'Bind'}
             </button>
           </div>
           {bindError && <p className="text-red-300 text-xs mt-2">Error: {bindError}</p>}
-          <p className="text-white/60 text-xs mt-4">Your current host: <span className="font-medium">{context.host || 'N/A'}</span></p>
+          <p className="text-white/60 text-xs mt-4">Your current host: <span className="font-medium">{host || 'N/A'}</span></p>
         </div>
       )}
 
-      {!creatorId && !shouldShowBindCard && (
+      {unresolved && !shouldShowBindCard && (
         <div className="glass-card border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/5 p-4 rounded-lg text-amber-100 text-sm text-center max-w-md mx-auto mb-8 shadow-inner">
           Community ID is missing. Please access this page from the Whop sidebar or go back to <LinkWithId baseHref="/app" creatorId={creatorId} className="underline text-amber-100 hover:text-white">/app</LinkWithId>.
         </div>

@@ -32,7 +32,7 @@ const mockVariables = {
 
 function MessagesPageContent() {
   const searchParams = useSearchParams();
-  const { creatorId, context } = useCreatorId(searchParams);
+  const { creatorId, host, source, unresolved } = useCreatorId(searchParams); // Updated destructuring
   const [templates, setTemplates] = useState<DMTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [editorState, setEditorState] = useState<EditorState>({
@@ -51,10 +51,10 @@ function MessagesPageContent() {
   const [bindError, setBindError] = useState<string | null>(null);
   const [isBinding, setIsBinding] = useState<boolean>(false);
 
-  const shouldShowBindCard = !creatorId || context.source === 'env_fallback';
+  const shouldShowBindCard = unresolved; // Simplified condition
 
   const handleBind = async () => {
-    if (!bindBusinessId || !context.host) {
+    if (!bindBusinessId || !host) { // Use host directly
       setBindError('Business ID and Host are required.');
       return;
     }
@@ -70,7 +70,7 @@ function MessagesPageContent() {
       const res = await fetch('/api/resolve/host', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host: context.host, business_id: bindBusinessId }),
+        body: JSON.stringify({ host: host, business_id: bindBusinessId }), // Use host directly
       });
 
       if (!res.ok) {
@@ -296,19 +296,41 @@ function MessagesPageContent() {
         <header className="text-center mb-12 text-white/90">
           <h1 className="text-5xl md:text-6xl font-extrabold mb-4 drop-shadow-lg">DM Templates</h1>
           <p className="text-xl md:text-2xl text-white/80 max-w-2xl mx-auto mb-6">Craft the welcome message sent to new members.</p>
-          <div className="text-lg text-white/60">
-            {creatorId ? (
-              <>
-                Installed for: <span className="font-medium text-white">{creatorId}</span>
-                {context.slug && <span className="text-white/50 ml-2">(via slug: {context.slug})</span>}
-              </>
-            ) : (
-              'Detecting community…'
-            )}
-          </div>
+          {process.env.NODE_ENV !== 'production' && (
+            <div className="text-lg text-white/60">
+              Installed for: <span className="font-medium text-white">{creatorId || '—'}</span>
+              {host && <span className="text-white/50 ml-2">· host: {host}</span>}
+              {source && <span className="text-white/50 ml-2">· source: {source}</span>}
+            </div>
+          )}
         </header>
 
-        {!creatorId && (
+        {shouldShowBindCard && (
+          <div className="glass-card border-purple-500/30 bg-purple-500/10 dark:bg-purple-500/5 p-6 rounded-lg text-purple-100 text-sm max-w-lg mx-auto mb-8 shadow-inner">
+            <h3 className="text-xl font-semibold mb-3">Bind this Installation</h3>
+            <p className="mb-4">It looks like your community ID isn't automatically detected. Please enter your Whop Business ID below to bind this installation to your host. <span className="text-white/60 text-xs mt-1">You only need to do this once per community.</span></p>
+            <div className="flex flex-col sm:flex-row gap-3 mb-4">
+              <input
+                type="text"
+                value={bindBusinessId}
+                onChange={(e) => setBindBusinessId(e.target.value)}
+                placeholder="Enter Whop Business ID (e.g., biz_abc123)"
+                className="flex-grow px-4 py-2 rounded-lg bg-white/20 text-white placeholder-white/70 border border-white/30 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent transition-colors"
+              />
+              <button
+                onClick={handleBind}
+                disabled={isBinding || !bindBusinessId || !host}
+                className="px-6 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isBinding ? 'Binding…' : 'Bind'}
+              </button>
+            </div>
+            {bindError && <p className="text-red-300 text-xs mt-2">Error: {bindError}</p>}
+            <p className="text-white/60 text-xs mt-4">Your current host: <span className="font-medium">{host || 'N/A'}</span></p>
+          </div>
+        )}
+
+        {unresolved && !shouldShowBindCard && (
           <div className="glass-card border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/5 p-4 rounded-lg text-amber-100 text-sm text-center max-w-md mx-auto mb-8 shadow-inner">
             Community ID is missing. Please access this page from the Whop sidebar or go back to <LinkWithId baseHref="/app" creatorId={creatorId} className="underline text-amber-100 hover:text-white">/app</LinkWithId>.
           </div>
@@ -337,17 +359,19 @@ function MessagesPageContent() {
       <header className="text-center mb-12 text-white/90">
         <h1 className="text-5xl md:text-6xl font-extrabold mb-4 drop-shadow-lg">DM Templates</h1>
         <p className="text-xl md:text-2xl text-white/80 max-w-2xl mx-auto mb-6">Craft the welcome message sent to new members.</p>
-        <div className="text-lg text-white/60">
-          Installed for: <span className="font-medium text-white">{creatorId || 'detecting…'}</span>
-          {context.host && <span className="text-white/50 ml-2">(host: {context.host})</span>}
-          {context.source && <span className="text-white/50 ml-2">(source: {context.source})</span>}
-        </div>
+        {process.env.NODE_ENV !== 'production' && (
+          <div className="text-lg text-white/60">
+            Installed for: <span className="font-medium text-white">{creatorId || '—'}</span>
+            {host && <span className="text-white/50 ml-2">· host: {host}</span>}
+            {source && <span className="text-white/50 ml-2">· source: {source}</span>}
+          </div>
+        )}
       </header>
 
       {shouldShowBindCard && (
         <div className="glass-card border-purple-500/30 bg-purple-500/10 dark:bg-purple-500/5 p-6 rounded-lg text-purple-100 text-sm max-w-lg mx-auto mb-8 shadow-inner">
           <h3 className="text-xl font-semibold mb-3">Bind this Installation</h3>
-          <p className="mb-4">It looks like your community ID isn't automatically detected. Please enter your Whop Business ID below to bind this installation to your host.</p>
+          <p className="mb-4">It looks like your community ID isn't automatically detected. Please enter your Whop Business ID below to bind this installation to your host. <span className="text-white/60 text-xs mt-1">You only need to do this once per community.</span></p>
           <div className="flex flex-col sm:flex-row gap-3 mb-4">
             <input
               type="text"
@@ -358,18 +382,18 @@ function MessagesPageContent() {
             />
             <button
               onClick={handleBind}
-              disabled={isBinding || !bindBusinessId || !context.host}
+              disabled={isBinding || !bindBusinessId || !host}
               className="px-6 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isBinding ? 'Binding…' : 'Bind'}
             </button>
           </div>
           {bindError && <p className="text-red-300 text-xs mt-2">Error: {bindError}</p>}
-          <p className="text-white/60 text-xs mt-4">Your current host: <span className="font-medium">{context.host || 'N/A'}</span></p>
+          <p className="text-white/60 text-xs mt-4">Your current host: <span className="font-medium">{host || 'N/A'}</span></p>
         </div>
       )}
 
-      {!creatorId && !shouldShowBindCard && (
+      {unresolved && !shouldShowBindCard && (
         <div className="glass-card border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/5 p-4 rounded-lg text-amber-100 text-sm text-center max-w-md mx-auto mb-8 shadow-inner">
           Community ID is missing. Please access this page from the Whop sidebar or go back to <LinkWithId baseHref="/app" creatorId={creatorId} className="underline text-amber-100 hover:text-white">/app</LinkWithId>.
         </div>
@@ -421,7 +445,7 @@ function MessagesPageContent() {
                 onChange={(e) => setEditorState(s => ({ ...s, name: e.target.value }))}
                 placeholder="e.g., Welcome Message for New Members"
                 className="w-full"
-                disabled={isSaving || isCreatorIdMissing}
+                disabled={isSaving || unresolved}
               />
               {validationErrors.name && <p className="text-red-300 text-xs mt-1">{validationErrors.name}</p>}
             </div>
@@ -434,7 +458,7 @@ function MessagesPageContent() {
                 onChange={(e) => setEditorState(s => ({ ...s, subject: e.target.value }))}
                 placeholder="e.g., Welcome to {{community_name}}!"
                 className="w-full"
-                disabled={isSaving || isCreatorIdMissing}
+                disabled={isSaving || unresolved}
               />
             </div>
             <div>
@@ -446,7 +470,7 @@ function MessagesPageContent() {
                 rows={8}
                 placeholder="Hi {{member_name}}, welcome to {{community_name}}! ... {{onboarding_link}}"
                 className="w-full"
-                disabled={isSaving || isCreatorIdMissing}
+                disabled={isSaving || unresolved}
               />
               {validationErrors.body && <p className="text-red-300 text-xs mt-1">{validationErrors.body}</p>}
             </div>
@@ -463,7 +487,7 @@ function MessagesPageContent() {
             {editorState.id && !editorState.is_default && (
               <button
                 onClick={() => handleMakeDefault(editorState.id!)}
-                disabled={isSaving || isCreatorIdMissing}
+                disabled={isSaving || unresolved}
                 className="btn btn-secondary border-blue-400/20 bg-blue-500/20 hover:bg-blue-500/30 text-blue-100"
               >
                 <SparklesIcon className="h-5 w-5 mr-2" /> Make Default
@@ -472,7 +496,7 @@ function MessagesPageContent() {
             {editorState.id && (
               <button
                 onClick={() => handleDeleteTemplate(editorState.id!)}
-                disabled={isSaving || isCreatorIdMissing}
+                disabled={isSaving || unresolved}
                 className="btn btn-secondary border-red-400/20 bg-red-500/20 hover:bg-red-500/30 text-red-100"
               >
                 <TrashIcon className="h-5 w-5 mr-2" /> Delete
@@ -480,7 +504,7 @@ function MessagesPageContent() {
             )}
             <button
               onClick={handleSaveTemplate}
-              disabled={isSaving || isCreatorIdMissing}
+              disabled={isSaving || unresolved}
               className="btn bg-indigo-600 hover:bg-indigo-700"
             >
               {isSaving ? (

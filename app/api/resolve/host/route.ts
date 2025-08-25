@@ -38,7 +38,10 @@ export async function POST(req: Request) {
   const supabase = getServerSupabase();
   const { error } = await supabase
     .from('host_map')
-    .upsert({ embed_host: host, business_id: business_id }, { onConflict: 'embed_host' });
+    .upsert(
+      { embed_host: host, business_id: business_id, updated_at: new Date().toISOString() },
+      { onConflict: 'embed_host' }
+    );
 
   if (error) {
     console.error('Error upserting host_map:', error);
