@@ -1,6 +1,6 @@
 import { getServerSupabase } from './supabaseServer';
 
-interface CommunitySettings {
+export interface CommunitySettings {
   community_id: string;
   logo_url: string | null;
   primary_color: string | null;
