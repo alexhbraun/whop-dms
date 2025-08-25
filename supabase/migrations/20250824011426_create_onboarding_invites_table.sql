@@ -10,3 +10,4 @@ create table if not exists onboarding_invites (
 );
 create index if not exists onboarding_invites_lookup
   on onboarding_invites (creator_id, member_id, created_at desc);
+

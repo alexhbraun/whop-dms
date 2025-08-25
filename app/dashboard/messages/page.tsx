@@ -46,44 +46,15 @@ function MessagesPageContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [validationErrors, setValidationErrors] = useState<{ name?: string; body?: string }>({});
+  const [busy, setBusy] = useState(false); // New state for template creation button
+  const [err, setErr] = useState<string | null>(null); // New state for template creation errors
 
-  const [bindBusinessId, setBindBusinessId] = useState<string>('');
-  const [bindError, setBindError] = useState<string | null>(null);
-  const [isBinding, setIsBinding] = useState<boolean>(false);
-
-  const shouldShowBindCard = unresolved; // Simplified condition
-
-  const handleBind = async () => {
-    if (!bindBusinessId || !host) { // Use host directly
-      setBindError('Business ID and Host are required.');
-      return;
+  const selectTemplateByName = useCallback((name: string) => {
+    const template = templates.find(t => t.name === name);
+    if (template) {
+      setSelectedTemplateId(template.id);
     }
-
-    if (!/^[a-zA-Z0-9_]+$/.test(bindBusinessId)) {
-      setBindError('Business ID must be alphanumeric and underscores only.');
-      return;
-    }
-
-    setIsBinding(true);
-    setBindError(null);
-    try {
-      const res = await fetch('/api/resolve/host', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host: host, business_id: bindBusinessId }), // Use host directly
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Failed to bind host.');
-      }
-      window.location.reload();
-    } catch (e: any) {
-      setBindError(e.message || 'An unexpected error occurred during binding.');
-    } finally {
-      setIsBinding(false);
-    }
-  };
+  }, [templates]);
 
   const fetchTemplates = useCallback(async () => {
     if (!creatorId) return;
@@ -108,6 +79,38 @@ function MessagesPageContent() {
       setLoading(false);
     }
   }, [creatorId, selectedTemplateId]);
+
+  const createFirstTemplate = async () => {
+    setErr(null);
+    if (!creatorId || unresolved) {
+      setErr('Please finish setup first (connect to your Whop Business).');
+      return;
+    }
+    setBusy(true);
+    try {
+      const payload = {
+        name: 'Welcome Message',
+        subject: 'Welcome to {{community_name}}!',
+        content: 'Hi {{member_name}}, welcome to {{community_name}}! Tap here to answer a couple of quick questions: {{onboarding_link}}',
+        is_default: true
+      };
+      const res = await fetch(`/api/dm-templates?community_id=${encodeURIComponent(creatorId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || `Request failed (${res.status})`);
+      // Refresh list + select new template
+      await fetchTemplates();
+      selectTemplateByName('Welcome Message'); // focus the editor on it if available
+    } catch (e: any) {
+      console.error('Create first template error:', e);
+      setErr(e.message || 'Could not create template.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (creatorId) {
@@ -254,43 +257,11 @@ function MessagesPageContent() {
     }
   }, [editorState.body]);
 
-  const isCreatorIdMissing = !creatorId;
-
   if (loading) {
     return <div className="text-white/70 text-center py-12">Loading templates...</div>;
   }
 
   if (templates.length === 0 && !selectedTemplateId) {
-    const handleCreateFirstTemplate = async () => {
-      if (!creatorId) return;
-      setLoading(true);
-      try {
-        const defaultContent = "Hi {{member_name}}, welcome to {{community_name}}! Tap to answer a couple of quick questions: {{onboarding_link}}";
-        const res = await fetch(`/api/dm-templates?community_id=${creatorId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: 'Welcome Template',
-            subject: 'Welcome to {{community_name}}!',
-            body: defaultContent,
-            is_default: true, // Make the first one default
-          }),
-        });
-        if (!res.ok) throw new Error('Failed to create first template');
-        const data = await res.json();
-        if (data.success) {
-          await fetchTemplates();
-          setSelectedTemplateId(data.data.id);
-        } else {
-          console.error('Error creating first template:', data.error);
-        }
-      } catch (error) {
-        console.error('Create first template error:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     return (
       <div className="container flex-grow py-8">
         <header className="text-center mb-12 text-white/90">
@@ -305,34 +276,9 @@ function MessagesPageContent() {
           )}
         </header>
 
-        {shouldShowBindCard && (
-          <div className="glass-card border-purple-500/30 bg-purple-500/10 dark:bg-purple-500/5 p-6 rounded-lg text-purple-100 text-sm max-w-lg mx-auto mb-8 shadow-inner">
-            <h3 className="text-xl font-semibold mb-3">Bind this Installation</h3>
-            <p className="mb-4">It looks like your community ID isn't automatically detected. Please enter your Whop Business ID below to bind this installation to your host. <span className="text-white/60 text-xs mt-1">You only need to do this once per community.</span></p>
-            <div className="flex flex-col sm:flex-row gap-3 mb-4">
-              <input
-                type="text"
-                value={bindBusinessId}
-                onChange={(e) => setBindBusinessId(e.target.value)}
-                placeholder="Enter Whop Business ID (e.g., biz_abc123)"
-                className="flex-grow px-4 py-2 rounded-lg bg-white/20 text-white placeholder-white/70 border border-white/30 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent transition-colors"
-              />
-              <button
-                onClick={handleBind}
-                disabled={isBinding || !bindBusinessId || !host}
-                className="px-6 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isBinding ? 'Binding…' : 'Bind'}
-              </button>
-            </div>
-            {bindError && <p className="text-red-300 text-xs mt-2">Error: {bindError}</p>}
-            <p className="text-white/60 text-xs mt-4">Your current host: <span className="font-medium">{host || 'N/A'}</span></p>
-          </div>
-        )}
-
-        {unresolved && !shouldShowBindCard && (
+        {unresolved && (
           <div className="glass-card border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/5 p-4 rounded-lg text-amber-100 text-sm text-center max-w-md mx-auto mb-8 shadow-inner">
-            Community ID is missing. Please access this page from the Whop sidebar or go back to <LinkWithId baseHref="/app" creatorId={creatorId} className="underline text-amber-100 hover:text-white">/app</LinkWithId>.
+            Finish setup on the Home screen to connect this app to your Whop Business.
           </div>
         )}
 
@@ -340,12 +286,13 @@ function MessagesPageContent() {
           <h2 className="text-2xl font-semibold">No DM Templates Yet</h2>
           <p className="text-white/70">Start by creating your first welcome message template.</p>
           <button
-            onClick={handleCreateFirstTemplate}
-            disabled={!creatorId || loading}
-            className="btn bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md transition-colors mt-4"
+            onClick={createFirstTemplate}
+            disabled={busy || unresolved}
+            className="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-white text-sm hover:bg-indigo-700 disabled:opacity-50"
           >
-            <PlusIcon className="h-5 w-5 mr-2" /> Create First Template
+            <span className="mr-1">＋</span> {busy ? 'Creating…' : 'Create First Template'}
           </button>
+          {err && <div className="mt-2 text-sm text-red-300">{err}</div>}
           <div className="pt-4">
             <LinkWithId baseHref="/app" creatorId={creatorId} className="text-sm underline text-white/70 hover:text-white">← Back to App</LinkWithId>
           </div>
@@ -368,34 +315,9 @@ function MessagesPageContent() {
         )}
       </header>
 
-      {shouldShowBindCard && (
-        <div className="glass-card border-purple-500/30 bg-purple-500/10 dark:bg-purple-500/5 p-6 rounded-lg text-purple-100 text-sm max-w-lg mx-auto mb-8 shadow-inner">
-          <h3 className="text-xl font-semibold mb-3">Bind this Installation</h3>
-          <p className="mb-4">It looks like your community ID isn't automatically detected. Please enter your Whop Business ID below to bind this installation to your host. <span className="text-white/60 text-xs mt-1">You only need to do this once per community.</span></p>
-          <div className="flex flex-col sm:flex-row gap-3 mb-4">
-            <input
-              type="text"
-              value={bindBusinessId}
-              onChange={(e) => setBindBusinessId(e.target.value)}
-              placeholder="Enter Whop Business ID (e.g., biz_abc123)"
-              className="flex-grow px-4 py-2 rounded-lg bg-white/20 text-white placeholder-white/70 border border-white/30 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent transition-colors"
-            />
-            <button
-              onClick={handleBind}
-              disabled={isBinding || !bindBusinessId || !host}
-              className="px-6 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isBinding ? 'Binding…' : 'Bind'}
-            </button>
-          </div>
-          {bindError && <p className="text-red-300 text-xs mt-2">Error: {bindError}</p>}
-          <p className="text-white/60 text-xs mt-4">Your current host: <span className="font-medium">{host || 'N/A'}</span></p>
-        </div>
-      )}
-
-      {unresolved && !shouldShowBindCard && (
+      {unresolved && (
         <div className="glass-card border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/5 p-4 rounded-lg text-amber-100 text-sm text-center max-w-md mx-auto mb-8 shadow-inner">
-          Community ID is missing. Please access this page from the Whop sidebar or go back to <LinkWithId baseHref="/app" creatorId={creatorId} className="underline text-amber-100 hover:text-white">/app</LinkWithId>.
+          Finish setup on the Home screen to connect this app to your Whop Business.
         </div>
       )}
 

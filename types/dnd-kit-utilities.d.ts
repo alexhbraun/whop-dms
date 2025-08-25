@@ -10,3 +10,4 @@ declare module '@dnd-kit/utilities' {
     };
   };
 }
+

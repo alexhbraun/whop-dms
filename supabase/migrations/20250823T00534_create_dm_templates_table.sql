@@ -21,3 +21,4 @@ create policy "Community owners can insert their own DM templates."
 -- Allow community owners to update their own templates
 create policy "Community owners can update their own DM templates."
   on dm_templates for update using (auth.uid()::text = community_id);
+

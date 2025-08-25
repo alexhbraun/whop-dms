@@ -215,3 +215,4 @@ export default function OnboardingPage({ params, searchParams }) {
     </div>
   );
 }
+

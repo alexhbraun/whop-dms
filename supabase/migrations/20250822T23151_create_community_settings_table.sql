@@ -23,3 +23,4 @@ create policy "Community owners can insert their settings."
 
 create policy "Community owners can update their settings."
   on community_settings for update using (auth.uid() = community_id); -- Assuming community_id maps to auth.uid for simplicity
+

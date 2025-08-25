@@ -23,3 +23,4 @@ create policy "Members can insert their own whop installations."
 -- Allow members to update their own installations
 create policy "Members can update their own whop installations."
   on whop_installations for update using (auth.uid()::text = member_id);
+

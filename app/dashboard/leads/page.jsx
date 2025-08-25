@@ -20,3 +20,4 @@ export default function LeadsPage({ searchParams }) {
     </div>
   );
 }
+

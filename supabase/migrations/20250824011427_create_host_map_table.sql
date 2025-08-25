@@ -17,3 +17,4 @@ create policy "Allow insert access for authenticated users" on host_map
 
 create policy "Allow update access for authenticated users" on host_map
   for update using (auth.role() = 'authenticated');
+
