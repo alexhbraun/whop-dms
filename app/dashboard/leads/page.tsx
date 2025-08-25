@@ -2,9 +2,11 @@
 import { Suspense } from 'react';
 import useCreatorId from '@/components/useCreatorId';
 import LinkWithId from '@/components/LinkWithId';
+import { useSearchParams } from 'next/navigation'; // Import useSearchParams
 
 function LeadsPageContent() {
-  const creatorId = useCreatorId();
+  const searchParams = useSearchParams();
+  const { creatorId, context } = useCreatorId(searchParams);
 
   return (
     <div className="container flex-grow py-8">
@@ -13,7 +15,10 @@ function LeadsPageContent() {
         <p className="text-xl md:text-2xl text-white/80 max-w-2xl mx-auto mb-6">View and export member responses.</p>
         <div className="text-lg text-white/60">
           {creatorId ? (
-            <>Installed for: <span className="font-medium text-white">{creatorId}</span></>
+            <>
+              Installed for: <span className="font-medium text-white">{creatorId}</span>
+              {context.slug && <span className="text-white/50 ml-2">(via slug: {context.slug})</span>}
+            </>
           ) : (
             'Detecting community…'
           )}

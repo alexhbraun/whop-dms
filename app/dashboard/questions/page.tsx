@@ -21,6 +21,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities'; // Reverted to simpler import
+import { useSearchParams } from 'next/navigation'; // Import useSearchParams
 
 interface Question {
   id: string;
@@ -111,7 +112,8 @@ function SortableQuestionItem({ question, onEdit, onDelete, isDisabled }: Sortab
 }
 
 function OnboardingQuestionsPageContent() {
-  const creatorId = useCreatorId();
+  const searchParams = useSearchParams();
+  const { creatorId, context } = useCreatorId(searchParams);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -334,7 +336,10 @@ function OnboardingQuestionsPageContent() {
           <p className="text-xl md:text-2xl text-white/80 max-w-2xl mx-auto mb-6">Choose the questions after the magic link.</p>
           <div className="text-lg text-white/60">
             {creatorId ? (
-              <>Installed for: <span className="font-medium text-white">{creatorId}</span></>
+              <>
+                Installed for: <span className="font-medium text-white">{creatorId}</span>
+                {context.slug && <span className="text-white/50 ml-2">(via slug: {context.slug})</span>}
+              </>
             ) : (
               'Detecting community…'
             )}
@@ -372,7 +377,10 @@ function OnboardingQuestionsPageContent() {
         <p className="text-xl md:text-2xl text-white/80 max-w-2xl mx-auto mb-6">Choose the questions after the magic link.</p>
         <div className="text-lg text-white/60">
           {creatorId ? (
-            <>Installed for: <span className="font-medium text-white">{creatorId}</span></>
+            <>
+              Installed for: <span className="font-medium text-white">{creatorId}</span>
+              {context.slug && <span className="text-white/50 ml-2">(via slug: {context.slug})</span>}
+            </>
           ) : (
             'Detecting community…'
           )}
