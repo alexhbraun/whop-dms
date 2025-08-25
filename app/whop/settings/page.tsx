@@ -10,12 +10,14 @@ export default function SettingsPage({ searchParams }: { searchParams?: any }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string|null>(null);
+  const [webhookUrlError, setWebhookUrlError] = useState<string|null>(null); // New state for webhook URL error
   const [ok, setOk] = useState(false);
 
   async function load() {
     if (!creatorId) return;
     setLoading(true);
     setError(null);
+    setWebhookUrlError(null); // Clear webhook error on load
     try {
       const r = await fetch(`/api/settings/${encodeURIComponent(creatorId)}`, { cache: 'no-store' });
       const j = await r.json().catch(() => ({}));
@@ -32,7 +34,7 @@ export default function SettingsPage({ searchParams }: { searchParams?: any }) {
 
   async function save() {
     if (!creatorId) return;
-    setSaving(true); setError(null); setOk(false);
+    setSaving(true); setError(null); setOk(false); setWebhookUrlError(null); // Clear errors on save attempt
     try {
       const r = await fetch(`/api/settings/${encodeURIComponent(creatorId)}`, {
         method: 'PUT',
@@ -40,11 +42,22 @@ export default function SettingsPage({ searchParams }: { searchParams?: any }) {
         body: JSON.stringify({ require_email: requireEmail, webhook_url: webhookUrl || null }),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok || j.ok === false) throw new Error(j.error || `Save failed (${r.status})`);
+      if (!r.ok || j.ok === false) {
+        // Handle specific webhook URL error
+        if (r.status === 400 && j.error && j.error.includes('Webhook URL')) {
+          setWebhookUrlError(j.error);
+        } else {
+          setError(j.error || `Save failed (${r.status})`);
+        }
+        throw new Error('Save failed'); // To jump to catch block
+      }
       setOk(true);
       setTimeout(() => setOk(false), 2500);
     } catch (e:any) {
-      setError(e.message || 'Could not save settings.');
+      // General error is already set or webhookUrlError is set, no need to set here unless it's truly a new generic error
+      if (!error && !webhookUrlError) {
+        setError(e.message || 'Could not save settings.');
+      }
     } finally {
       setSaving(false);
     }
@@ -88,6 +101,7 @@ export default function SettingsPage({ searchParams }: { searchParams?: any }) {
               disabled={disabled}
               className="w-full rounded-lg border border-white/20 bg-white/70 dark:bg-white/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
+            {webhookUrlError && <div className="mt-1 text-sm text-red-300">{webhookUrlError}</div>}
             <p className="mt-1 text-xs text-white/70">
               We’ll POST each captured lead to this URL. Leave blank to disable forwarding.
             </p>
