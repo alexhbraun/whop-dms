@@ -43,9 +43,10 @@ export default function BindHostBanner({
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-4 shadow-xl mt-4">
-      <div className="font-semibold mb-1">Bind this installation</div>
+      <div className="font-semibold mb-1">Finish setup</div>
       <p className="text-sm text-white/80 dark:text-white/70">
-        We couldn&apos;t auto-resolve this embed host. Enter the Whop <span className="font-medium">Business ID</span> to bind it once.
+        To complete setup, please enter your Whop <span className="font-medium">Business ID</span>. 
+        You only need to do this once, and it will connect this app to your community automatically.
       </p>
       <div className="mt-2 text-xs text-white/60">Host: <code>{host}</code></div>
       <div className="mt-3 flex gap-2">
@@ -73,7 +74,7 @@ export default function BindHostBanner({
       </button>
       {showHelp && (
         <div className="mt-2 text-xs text-white/80 space-y-1 rounded-lg border border-white/10 bg-white/5 p-3">
-          <p><span className="font-semibold">What is a Business ID?</span> It’s the unique code for your community on Whop. You’ll paste it here once.</p>
+          <p><span className="font-semibold">How to find it:</span></p>
           <ol className="list-decimal ms-5 space-y-1">
             <li>Open Whop in another tab and go to your <span className="font-medium">Business Dashboard</span>.</li>
             <li>Look at the <span className="font-medium">URL</span> in your browser. Example: <code>https://whop.com/business/biz_ABC12345</code></li>
