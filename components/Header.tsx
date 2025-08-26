@@ -9,7 +9,7 @@ export default function Header() {
   const isDashboardPage = pathname?.startsWith('/dashboard');
 
   return (
-    <header className="w-full max-w-5xl mx-auto py-6 px-4 mb-8 text-white/90">
+    <header className="w-full max-w-5xl mx-auto py-6 px-4 text-white/90">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-extrabold drop-shadow-lg">Whop DMS</h1>

@@ -12,7 +12,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${inter.variable} h-full`}>
-      <body className="min-h-full flex flex-col antialiased text-white/90 bg-gradient-to-br from-[#120a2e] to-[#2a1a5a]"> {/* Removed centering, added flex-col, and background gradient */}
+      <body className="min-h-full flex flex-col antialiased text-white/90"> {/* Removed background gradient */}
         <Header /> {/* Render the global header here */}
         <main className="flex-grow w-full max-w-5xl mx-auto px-4"> {/* Main content area with flexible height and spacing */}
           {children}
