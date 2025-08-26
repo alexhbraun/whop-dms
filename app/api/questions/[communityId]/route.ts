@@ -8,7 +8,6 @@ type UIQuestion = {
   required: boolean;
   position: number;
   options?: { value: string; label?: string }[];
-  key_alias?: string | null;
 };
 
 function optionsToTextArray(opts?: UIQuestion['options']): string[] {
@@ -28,7 +27,7 @@ export async function GET(_req: Request, { params }: { params: { communityId: st
   try {
     const { data, error } = await supabase
       .from('onboarding_questions')
-      .select('id, community_id, label, key_alias, type, is_required, options, order_index')
+      .select('id, community_id, label, type, is_required, options, order_index')
       .eq('community_id', params.communityId)
       .order('order_index', { ascending: true });
 
@@ -44,7 +43,6 @@ export async function GET(_req: Request, { params }: { params: { communityId: st
       required: !!row.is_required,
       position: typeof row.order_index === 'number' ? row.order_index : 0,
       options: textArrayToOptions(row.options),
-      key_alias: row.key_alias ?? null,
     }));
 
     return NextResponse.json({ ok: true, items });
@@ -71,16 +69,18 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
     }
 
     // Upsert payload
-    const payload = list.map(q => ({
-      id: q.id ?? undefined,
-      community_id: params.communityId,
-      label: q.text.trim(),
-      key_alias: q.key_alias ?? null,
-      type: q.type,
-      is_required: !!q.required,
-      order_index: q.position,
-      options: optionsToTextArray(q.options), // text[]
-    }));
+    const payload = list.map((q) => {
+      const row: any = {
+        community_id: params.communityId,
+        label: q.text.trim(),
+        type: q.type,
+        is_required: !!q.required,
+        order_index: q.position ?? 0,
+        options: optionsToTextArray(q.options), // text[]
+      };
+      if (q.id) row.id = q.id;        // <-- only set when present
+      return row;
+    });
 
     const { error: upsertErr } = await supabase
       .from('onboarding_questions')
