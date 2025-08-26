@@ -80,13 +80,14 @@ export async function GET(req: Request) {
         .from('host_map')
         .select('host,business_id,created_at')
         .eq('host', embedHost)
-        .maybeSingle();
+        .limit(1);
       if (error) {
         report.binding = fail('Binding lookup failed (host_map table may not exist)', { detail: error.message });
-      } else if (!data) {
+      } else if (!data || data.length === 0) {
         report.binding = fail('No binding for this host', { host: embedHost });
       } else {
-        report.binding = ok({ host: embedHost, business_id: data.business_id });
+        const binding = data[0];
+        report.binding = ok({ host: embedHost, business_id: binding.business_id });
       }
     }
   } catch (e: any) {
@@ -103,14 +104,15 @@ export async function GET(req: Request) {
         .from('community_settings')
         .select('require_email,webhook_url,updated_at')
         .eq('community_id', communityId)
-        .maybeSingle();
+        .limit(1);
       if (error) throw error;
-      if (!data) {
+      if (!data || data.length === 0) {
         report.settings = fail('No settings row (UI will upsert defaults on save)');
       } else {
-        const urlVal = data.webhook_url || null;
+        const settingsRow = data[0];
+        const urlVal = settingsRow.webhook_url || null;
         report.settings = ok({
-          require_email: !!data.require_email,
+          require_email: !!settingsRow.require_email,
           webhook_configured: !!urlVal,
           webhook_url_preview: urlVal ? (urlVal as string).replace(/^(https?:\/\/)(.+)(.{4})$/, '$1••••$3') : null,
         });
