@@ -19,7 +19,7 @@ type UIQuestion = {
 };
 
 // Debug badge component
-function DebugCommunityBadge({ id }: { id?: string }) {
+function DebugCommunityBadge({ id }: { id?: string | null }) {
   if (!id) return null;
   return (
     <div style={{ 
