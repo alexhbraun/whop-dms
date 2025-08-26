@@ -35,15 +35,15 @@ export async function GET(req: Request) {
     report.supabase = fail('Cannot connect to Supabase or table not accessible', { detail: e?.message });
   }
 
+  // Helper to check if table exists
+  const checkTableExists = async (supabase: any, table: string) => {
+    const r = await supabase.from(table as any).select('*').limit(0);
+    return !r.error;
+  };
+
   // 3) schema checks (tables + columns)
   try {
     const supabase = getServerSupabase();
-    
-    // Helper to check if table exists
-    async function exists(table: string) {
-      const r = await supabase.from(table as any).select('*').limit(0);
-      return !r.error;
-    }
 
     const need = {
       dm_templates: ['id', 'community_id', 'name', 'content', 'is_default', 'created_at', 'updated_at'],
@@ -54,7 +54,7 @@ export async function GET(req: Request) {
 
     const schemaRes: Record<string, any> = {};
     for (const [table, cols] of Object.entries(need)) {
-      const hasTable = await exists(table);
+      const hasTable = await checkTableExists(supabase, table);
       if (!hasTable) {
         schemaRes[table] = fail('Missing table');
         continue;
