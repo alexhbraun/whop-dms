@@ -9,14 +9,14 @@ export default function Header() {
   const isDashboardPage = pathname?.startsWith('/dashboard');
 
   return (
-    <header className="w-full max-w-5xl mx-auto py-6 px-4 text-white/90">
-      <div className="flex items-center justify-between">
+    <header className="w-full py-6 px-6 text-gray-800">
+      <div className="flex items-center justify-between max-w-7xl mx-auto">
         <div>
-          <h1 className="text-4xl font-extrabold drop-shadow-lg">Whop DMS</h1>
-          <p className="text-xl text-white/80">Elevate Your Community Experience</p>
+          <h1 className="text-4xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">Whop DMS</h1>
+          <p className="text-xl text-gray-600">Elevate Your Community Experience</p>
         </div>
         {isDashboardPage && (
-          <Link href="/app" className="text-sm underline text-white/70 hover:text-white">
+          <Link href="/app" className="text-sm underline text-gray-600 hover:text-gray-800">
             ← Back to App
           </Link>
         )}
