@@ -68,32 +68,67 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
     const list: UIQuestion[] = Array.isArray(body?.items) ? body.items : [];
     if (!list.length) return NextResponse.json({ ok: false, error: 'No questions provided' });
 
-    const payload = list.map((q, i) => {
-      const text = (q.text || '').trim();
-      if (!text) throw new Error('Each question needs text');
-      const pos = Number.isFinite(q.position) ? q.position : i;
-      const key_slug = (q.key_slug && q.key_slug.trim()) || slugify(text) || `q_${i}`;
-      const row: any = {
-        community_id: params.communityId,
-        key_slug,                 // stable key
-        label: text,
-        type: q.type || 'text',
-        is_required: !!q.required,
-        order_index: pos,
-        options: optionsToTextArray(q.options), // text[]
-      };
-      if (q.id) row.id = q.id; // omit when absent → DB default generates uuid
-      return row;
-    });
+    // Separate new questions from existing ones
+    const existingQuestions = list.filter(q => q.id);
+    const newQuestions = list.filter(q => !q.id);
 
-    // upsert keyed by (community_id, key_slug)
-    const { error: upsertErr } = await supabase
-      .from('onboarding_questions')
-      .upsert(payload, { onConflict: 'community_id,key_slug' });
+    // Handle existing questions (update)
+    if (existingQuestions.length > 0) {
+      const updatePayload = existingQuestions.map((q, i) => {
+        const text = (q.text || '').trim();
+        if (!text) throw new Error('Each question needs text');
+        const pos = Number.isFinite(q.position) ? q.position : i;
+        const key_slug = (q.key_slug && q.key_slug.trim()) || slugify(text) || `q_${i}`;
+        
+        return {
+          id: q.id,
+          community_id: params.communityId,
+          key_slug,
+          label: text,
+          type: q.type || 'text',
+          is_required: !!q.required,
+          order_index: pos,
+          options: optionsToTextArray(q.options),
+        };
+      });
 
-    if (upsertErr) {
-      console.error('[questions.PUT] upsert error', upsertErr.message);
-      return NextResponse.json({ ok: false, error: upsertErr.message, items: [] });
+      const { error: updateErr } = await supabase
+        .from('onboarding_questions')
+        .upsert(updatePayload, { onConflict: 'id' });
+
+      if (updateErr) {
+        console.error('[questions.PUT] update error', updateErr.message);
+        return NextResponse.json({ ok: false, error: updateErr.message, items: [] });
+      }
+    }
+
+    // Handle new questions (insert)
+    if (newQuestions.length > 0) {
+      const insertPayload = newQuestions.map((q, i) => {
+        const text = (q.text || '').trim();
+        if (!text) throw new Error('Each question needs text');
+        const pos = Number.isFinite(q.position) ? q.position : i;
+        const key_slug = (q.key_slug && q.key_slug.trim()) || slugify(text) || `q_${i}`;
+        
+        return {
+          community_id: params.communityId,
+          key_slug,
+          label: text,
+          type: q.type || 'text',
+          is_required: !!q.required,
+          order_index: pos,
+          options: optionsToTextArray(q.options),
+        };
+      });
+
+      const { error: insertErr } = await supabase
+        .from('onboarding_questions')
+        .insert(insertPayload);
+
+      if (insertErr) {
+        console.error('[questions.PUT] insert error', insertErr.message);
+        return NextResponse.json({ ok: false, error: insertErr.message, items: [] });
+      }
     }
 
     // No destructive delete. Now return canonical rows:
