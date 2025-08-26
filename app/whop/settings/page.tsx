@@ -67,11 +67,11 @@ export default function SettingsPage({ searchParams }: { searchParams?: any }) {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className="text-4xl font-bold tracking-tight">App Settings</h1>
-      <p className="mt-1 text-white/80">Configure your integration.</p>
+      <h1 className="text-4xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">App Settings</h1>
+      <p className="mt-1 text-gray-600">Configure your integration.</p>
 
-      <div className="mt-6 rounded-2xl border border-white/10 bg-white/10 backdrop-blur-xl p-5">
-        <div className="text-lg font-semibold">General Settings</div>
+      <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="text-lg font-semibold text-gray-800">General Settings</div>
         <div className="mt-4 space-y-6">
           {/* Require email */}
           <label className="flex items-start gap-3">
@@ -83,8 +83,8 @@ export default function SettingsPage({ searchParams }: { searchParams?: any }) {
               disabled={disabled}
             />
             <div>
-              <div className="font-medium">Require email on onboarding</div>
-              <div className="text-sm text-white/80">
+              <div className="font-medium text-gray-800">Require email on onboarding</div>
+              <div className="text-sm text-gray-600">
                 New members will be asked for their email address. This is recommended if you plan to follow up outside Whop.
               </div>
             </div>
@@ -99,16 +99,16 @@ export default function SettingsPage({ searchParams }: { searchParams?: any }) {
               value={webhookUrl}
               onChange={(e)=>setWebhookUrl(e.target.value)}
               disabled={disabled}
-              className="w-full rounded-lg border border-white/20 bg-white/70 dark:bg-white/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
-            {webhookUrlError && <div className="mt-1 text-sm text-red-300">{webhookUrlError}</div>}
-            <p className="mt-1 text-xs text-white/70">
-              We’ll POST each captured lead to this URL. Leave blank to disable forwarding.
+            {webhookUrlError && <div className="mt-1 text-sm text-red-600">{webhookUrlError}</div>}
+            <p className="mt-1 text-xs text-gray-600">
+              We'll POST each captured lead to this URL. Leave blank to disable forwarding.
             </p>
           </div>
         </div>
 
-        {error && <div className="mt-4 text-sm text-red-300">{error}</div>}
+        {error && <div className="mt-4 text-sm text-red-600">{error}</div>}
 
         <div className="mt-5 flex items-center gap-3">
           <button
@@ -118,9 +118,9 @@ export default function SettingsPage({ searchParams }: { searchParams?: any }) {
           >
             {saving ? 'Saving…' : 'Save Settings'}
           </button>
-          {ok && <div className="text-sm text-green-300">✅ Settings saved</div>}
+          {ok && <div className="text-sm text-green-600">✅ Settings saved</div>}
           <div className="ms-auto">
-            <Link href={`/app${creatorId ? `?community_id=${encodeURIComponent(creatorId)}` : ''}`} className="text-white/80 underline">
+            <Link href={`/app${creatorId ? `?community_id=${encodeURIComponent(creatorId)}` : ''}`} className="text-gray-600 underline hover:text-gray-800">
               ← Back to App
             </Link>
           </div>
@@ -128,7 +128,7 @@ export default function SettingsPage({ searchParams }: { searchParams?: any }) {
       </div>
 
       {unresolved && (
-        <p className="mt-3 text-sm text-amber-300/90">
+        <p className="mt-3 text-sm text-amber-600">
           Finish setup on Home to connect this app to your Whop Business.
         </p>
       )}

@@ -22,26 +22,26 @@ export default function InfoCard({
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-4">
+    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold">What’s a DM Template?</div>
+          <div className="text-sm font-semibold text-blue-800">What's a DM Template?</div>
           {!collapsed && (
-            <div className="mt-1 text-sm text-white/80 dark:text-white/70">
+            <div className="mt-1 text-sm text-blue-700">
               This is the <span className="font-medium">welcome message</span> new members receive
               when they join your community.
               <ul className="mt-2 list-disc ms-5 space-y-1">
                 <li><span className="font-medium">Name</span> — for your own organization.</li>
                 <li><span className="font-medium">Message content</span> — what the member sees. Use placeholders:
                   <div className="mt-1 space-x-2">
-                    <code className="rounded bg-white/10 px-1.5 py-0.5">{"{{member_name}}"}</code>
-                    <code className="rounded bg-white/10 px-1.5 py-0.5">{"{{community_name}}"}</code>
-                    <code className="rounded bg-white/10 px-1.5 py-0.5">{"{{onboarding_link}}"}</code>
+                    <code className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-800">{"{{member_name}}"}</code>
+                    <code className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-800">{"{{community_name}}"}</code>
+                    <code className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-800">{"{{onboarding_link}}"}</code>
                   </div>
                 </li>
                 <li><span className="font-medium">Set as default</span> — only one template is active. The default template is sent automatically.</li>
               </ul>
-              <p className="mt-2 text-white/70">
+              <p className="mt-2 text-blue-600">
                 💡 <span className="font-medium">Tip:</span> Keep it warm and short. End with the onboarding link to collect email and preferences.
               </p>
             </div>
@@ -50,7 +50,7 @@ export default function InfoCard({
         <button
           type="button"
           onClick={toggle}
-          className="rounded-lg border border-white/20 bg-white/10 px-3 py-1 text-xs text-white/90 hover:bg-white/15"
+          className="rounded-lg border border-blue-300 bg-blue-100 px-3 py-1 text-xs text-blue-700 hover:bg-blue-200"
           aria-expanded={!collapsed}
         >
           {collapsed ? 'What is this?' : 'Hide explanation'}

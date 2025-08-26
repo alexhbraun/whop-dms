@@ -42,19 +42,19 @@ export default function BindHostBanner({
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-4 shadow-xl mt-4">
-      <div className="font-semibold mb-1">Finish setup</div>
-      <p className="text-sm text-white/80 dark:text-white/70">
+    <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 shadow-sm mt-4">
+      <div className="font-semibold mb-1 text-yellow-800">Finish setup</div>
+      <p className="text-sm text-yellow-700">
         To complete setup, please enter your Whop <span className="font-medium">Business ID</span>. 
         You only need to do this once, and it will connect this app to your community automatically.
       </p>
-      <div className="mt-2 text-xs text-white/60">Host: <code>{host}</code></div>
+      <div className="mt-2 text-xs text-yellow-600">Host: <code>{host}</code></div>
       <div className="mt-3 flex gap-2">
         <input
           value={biz}
           onChange={(e)=>setBiz(e.target.value)}
           placeholder="biz_XXXXXXXX"
-          className="w-full rounded-lg border border-white/20 bg-white/70 dark:bg-white/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
         />
         <button
           onClick={bind}
@@ -64,16 +64,16 @@ export default function BindHostBanner({
           {loading ? 'Binding…' : 'Bind'}
         </button>
       </div>
-      {err && <div className="mt-2 text-sm text-red-300">{err}</div>}
+      {err && <div className="mt-2 text-sm text-red-600">{err}</div>}
       <button
         type="button"
         onClick={() => setShowHelp(v => !v)}
-        className="mt-2 text-xs underline underline-offset-2 text-white/80 hover:text-white"
+        className="mt-2 text-xs underline underline-offset-2 text-yellow-600 hover:text-yellow-800"
       >
         {showHelp ? 'Hide help' : 'Where do I find this?'}
       </button>
       {showHelp && (
-        <div className="mt-2 text-xs text-white/80 space-y-1 rounded-lg border border-white/10 bg-white/5 p-3">
+        <div className="mt-2 text-xs text-yellow-700 space-y-1 rounded-lg border border-yellow-200 bg-yellow-100 p-3">
           <p><span className="font-semibold">How to find it:</span></p>
           <ol className="list-decimal ms-5 space-y-1">
             <li>Open Whop in another tab and go to your <span className="font-medium">Business Dashboard</span>.</li>

@@ -22,14 +22,14 @@ export default function InfoCardQuestions({
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-4">
+    <div className="rounded-2xl border border-green-200 bg-green-50 p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold">What are Onboarding Questions?</div>
+          <div className="text-sm font-semibold text-green-800">What are Onboarding Questions?</div>
           {!collapsed && (
-            <div className="mt-1 text-sm text-white/80 dark:text-white/70 space-y-3">
+            <div className="mt-1 text-sm text-green-700 space-y-3">
               <p>
-                These are the short questions your new member answers after tapping the welcome message’s link.
+                These are the short questions your new member answers after tapping the welcome message's link.
                 Their answers appear in <span className="font-medium">Leads</span> and can be forwarded to your CRM.
               </p>
 
@@ -63,7 +63,7 @@ export default function InfoCardQuestions({
                 </ul>
               </div>
 
-              <div className="text-white/70">
+              <div className="text-green-600">
                 💡 <span className="font-medium">Tips:</span> Keep it to 1–4 questions, make email required if you need it, and align options with how you tag/segment members.
               </div>
             </div>
@@ -72,7 +72,7 @@ export default function InfoCardQuestions({
         <button
           type="button"
           onClick={toggle}
-          className="rounded-lg border border-white/20 bg-white/10 px-3 py-1 text-xs text-white/90 hover:bg-white/15"
+          className="rounded-lg border border-green-300 bg-green-100 px-3 py-1 text-xs text-green-700 hover:bg-green-200"
           aria-expanded={!collapsed}
         >
           {collapsed ? 'What is this?' : 'Hide explanation'}

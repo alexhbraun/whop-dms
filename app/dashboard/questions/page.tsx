@@ -183,15 +183,15 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
     }
   }, []);
 
-  if (loading) return <div className="text-white/70 text-center py-12">Loading questions...</div>;
+  if (loading) return <div className="text-gray-600 text-center py-12">Loading questions...</div>;
 
   return (
     <div className="space-y-4"> {/* Replaced container flex-grow py-8 and header with simple div and space-y-4 */}
       {unresolved && (
-        <div className="rounded-2xl border border-white/10 bg-white/10 dark:bg-white/5 backdrop-blur-xl p-4 shadow-xl mb-4 max-w-3xl mx-auto text-red-300 text-center">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm mb-4 max-w-3xl mx-auto text-red-800 text-center">
           <div className="font-semibold mb-1">Unresolved Creator ID</div>
-          <p className="text-sm text-white/80 dark:text-white/70">You must finish setup on the Home screen to manage onboarding questions.</p>
-          <Link href="/app" className="mt-2 text-xs underline underline-offset-2 text-white/80 hover:text-white">Go to Home</Link>
+          <p className="text-sm text-red-600">You must finish setup on the Home screen to manage onboarding questions.</p>
+          <Link href="/app" className="mt-2 text-xs underline underline-offset-2 text-red-600 hover:text-red-800">Go to Home</Link>
         </div>
       )}
 
@@ -223,7 +223,7 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
                     />
                   ))
                 ) : (
-                  <p className="text-white/70 text-center mt-6">No questions added yet. Click "Add Question" to start.</p>
+                  <p className="text-gray-600 text-center mt-6">No questions added yet. Click "Add Question" to start.</p>
                 )}
               </div>
             </SortableContext>
@@ -245,12 +245,12 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
               Save Questions
             </button>
           </div>
-          {saveStatus === 'saved' && <p className="text-green-300 text-sm mt-2 text-right">Saved ✓</p>}
-          {saveStatus === 'error' && <p className="text-red-300 text-sm mt-2 text-right">Error saving.</p>}
+          {saveStatus === 'saved' && <p className="text-green-600 text-sm mt-2 text-right">Saved ✓</p>}
+          {saveStatus === 'error' && <p className="text-red-600 text-sm mt-2 text-right">Error saving.</p>}
         </div>
 
         <div className="flex justify-center pt-8">
-          <Link href="/app" className="text-sm underline text-white/70 hover:text-white">
+          <Link href="/app" className="text-sm underline text-gray-600 hover:text-gray-800">
             ← Back to App
           </Link>
         </div>
@@ -312,7 +312,7 @@ function QuestionItem({
       <div
         {...listeners}
         {...attributes}
-        className="absolute top-1/2 -translate-y-1/2 right-3 cursor-grab text-white/50 hover:text-white/80"
+        className="absolute top-1/2 -translate-y-1/2 right-3 cursor-grab text-gray-400 hover:text-gray-600"
       >
         <ChevronUpDownIcon className="h-6 w-6" />
       </div>
@@ -399,7 +399,7 @@ function QuestionItem({
 
 export default function QuestionsPage({ searchParams }: QuestionsPageProps) {
   return (
-    <Suspense fallback={<div className="text-white/70 text-center py-12">Loading onboarding questions...</div>}>
+    <Suspense fallback={<div className="text-gray-600 text-center py-12">Loading onboarding questions...</div>}>
       <QuestionsPageContent searchParams={searchParams} />
     </Suspense>
   );
