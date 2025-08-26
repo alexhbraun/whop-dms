@@ -41,20 +41,30 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
   );
 
   const fetchQuestions = useCallback(async () => {
-    if (!creatorId) return;
+    // Guard: Don't call API without a proper biz_... community ID
+    if (!creatorId || !creatorId.startsWith('biz_')) {
+      setLoading(false);
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     try {
       const res = await fetch(`/api/questions/${encodeURIComponent(creatorId)}`, { cache: 'no-store' });
-      if (!res.ok) throw new Error('Failed to fetch questions');
       const data = await res.json();
+      
+      // API always returns 200 with {ok:true, items:[]} or {ok:false, error}
       if (data.ok) {
-        setQuestions(data.items.sort((a: Question, b: Question) => a.position - b.position));
+        const sortedItems = (data.items || []).sort((a: Question, b: Question) => a.position - b.position);
+        setQuestions(sortedItems);
       } else {
-        throw new Error(data.error || 'Unknown error');
+        // Don't show error for empty results, just show empty state
+        console.warn('[questions.fetch] API returned error:', data.error);
+        setQuestions([]);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load questions.');
+      console.error('[questions.fetch] Network/parse error:', err);
+      setQuestions([]); // Fail gracefully with empty state
     } finally {
       setLoading(false);
     }
@@ -65,8 +75,8 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
   }, [fetchQuestions]);
 
   const handleAddQuestion = useCallback(() => {
-    if (!creatorId) {
-      setError('Creator ID is not resolved. Please ensure you are connected to a business.');
+    if (!creatorId || !creatorId.startsWith('biz_')) {
+      setError('Valid community ID (biz_...) is required to add questions.');
       return;
     }
     const newQuestion: Question = {
@@ -122,10 +132,20 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
   }, [creatorId, fetchQuestions]);
 
   const handleSaveQuestions = useCallback(async () => {
-    if (!creatorId) {
-      setError('Creator ID is not resolved. Please ensure you are connected to a business.');
+    // Guard: Don't save without proper biz_... community ID
+    if (!creatorId || !creatorId.startsWith('biz_')) {
+      setError('Valid community ID (biz_...) is required to save questions.');
       return;
     }
+
+    // Validate questions before saving
+    for (const q of questions) {
+      if (!q.text || !q.text.trim()) {
+        setError('All questions must have text before saving.');
+        return;
+      }
+    }
+
     setSaving(true);
     setSaveStatus('saving');
     setError(null);
@@ -144,14 +164,19 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
         body: JSON.stringify({ items: questionsToSave }),
       });
       
-      if (!res.ok) throw new Error('Failed to save questions');
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Unknown error saving questions');
-
-      setSaveStatus('saved');
-      await fetchQuestions(); // Reload to get proper IDs
+      
+      // API returns 200 with {ok:true} or {ok:false, error}
+      if (data.ok) {
+        setSaveStatus('saved');
+        await fetchQuestions(); // Reload to get proper IDs
+      } else {
+        setError(data.error || 'Failed to save questions');
+        setSaveStatus('error');
+      }
     } catch (err: any) {
-      setError(err.message || 'Failed to save questions.');
+      console.error('[questions.save] Network/parse error:', err);
+      setError('Network error while saving questions. Please try again.');
       setSaveStatus('error');
     } finally {
       setSaving(false);
@@ -185,7 +210,7 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
       <div className="max-w-5xl mx-auto space-y-4"> {/* Main content container */}
         <InfoCardQuestions />
 
-        {error && <div className="glass-card border-red-500/30 bg-red-500/10 dark:bg-red-500/5 p-3 rounded-lg text-red-100 text-sm mb-4">Error: {error}</div>}
+        {error && <div className="bg-red-50 border border-red-200 p-4 rounded-lg text-red-800 text-sm mb-4">Error: {error}</div>}
 
         <div className="glass-card rounded-2xl p-6 shadow-xl space-y-6">
           <button
