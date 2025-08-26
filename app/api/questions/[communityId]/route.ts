@@ -70,50 +70,36 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
     const list: UIQuestion[] = Array.isArray(body?.items) ? body.items : [];
     if (!list.length) return NextResponse.json({ ok: false, error: 'No questions provided' });
 
-    // Validate + build rows
+    // Build payload keyed by (community_id,key_slug)
     const payload = list.map((q, i) => {
       const text = (q.text || '').trim();
       if (!text) throw new Error('Each question needs text');
       const pos = Number.isFinite(q.position) ? q.position : i;
-
-      // compute slug if missing; DB trigger still guarantees a value
-      const baseSlug = q.key_slug && q.key_slug.trim() ? q.key_slug.trim() : slugify(text);
+      const key_slug = (q.key_slug && q.key_slug.trim()) || slugify(text) || `q_${i}`;
 
       const row: any = {
         community_id: params.communityId,
+        key_slug,                 // <— stable key
         label: text,
         type: q.type || 'text',
         is_required: !!q.required,
         order_index: pos,
         options: optionsToTextArray(q.options),
-        key_slug: baseSlug,
       };
-      if (q.id) row.id = q.id; // only when present; omit otherwise so DB generates id
+
+      // DO NOT set id on new rows; let DB default generate it
+      if (q.id) row.id = q.id;
       return row;
     });
 
-    // upsert by id (rows without id will insert)
+    // Upsert ON (community_id,key_slug)
     const { error: upsertErr } = await supabase
       .from('onboarding_questions')
-      .upsert(payload, { onConflict: 'id' });
+      .upsert(payload, { onConflict: 'community_id,key_slug' });
 
     if (upsertErr) {
       console.error('[questions.PUT] upsert error', upsertErr.message);
       return NextResponse.json({ ok: false, error: upsertErr.message });
-    }
-
-    // Optional: delete rows not present (full replace behavior)
-    const { data: existing, error: listErr } = await supabase
-      .from('onboarding_questions')
-      .select('id')
-      .eq('community_id', params.communityId);
-    if (!listErr) {
-      const incoming = new Set(payload.filter(p => p.id).map(p => p.id));
-      const toDelete = (existing || []).map(r => r.id).filter((id: string) => !incoming.has(id));
-      if (toDelete.length) {
-        const { error: delErr } = await supabase.from('onboarding_questions').delete().in('id', toDelete);
-        if (delErr) console.warn('[questions.PUT] delete warning', delErr.message);
-      }
     }
 
     return NextResponse.json({ ok: true });
