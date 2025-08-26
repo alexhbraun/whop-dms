@@ -10,14 +10,13 @@ import { useRouter } from 'next/navigation';
 import InfoCardQuestions from '@/components/InfoCardQuestions'; // Import InfoCardQuestions
 
 interface Question {
-  id: string;
-  community_id: string;
+  id?: string;
   text: string;
-  type: 'text' | 'longtext' | 'email' | 'select' | 'multiselect' | 'number';
-  options?: string[];
-  is_required: boolean;
-  order: number;
-  created_at: string;
+  type: 'text' | 'long_text' | 'email' | 'single_select' | 'multi_select' | 'number';
+  options?: { value: string; label?: string }[];
+  required: boolean;
+  position: number;
+  key_alias?: string | null;
 }
 
 interface QuestionsPageProps {
@@ -46,11 +45,11 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/questions?community_id=${encodeURIComponent(creatorId)}`);
+      const res = await fetch(`/api/questions/${encodeURIComponent(creatorId)}`, { cache: 'no-store' });
       if (!res.ok) throw new Error('Failed to fetch questions');
       const data = await res.json();
-      if (data.success) {
-        setQuestions(data.data.sort((a: Question, b: Question) => a.order - b.order));
+      if (data.ok) {
+        setQuestions(data.items.sort((a: Question, b: Question) => a.position - b.position));
       } else {
         throw new Error(data.error || 'Unknown error');
       }
@@ -72,12 +71,11 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
     }
     const newQuestion: Question = {
       id: `new-${Date.now()}`,
-      community_id: creatorId,
       text: '',
       type: 'text',
-      is_required: false,
-      order: questions.length,
-      created_at: new Date().toISOString(),
+      required: false,
+      position: questions.length,
+      options: [],
     };
     setQuestions(prev => [...prev, newQuestion]);
   }, [creatorId, questions.length]);
@@ -86,7 +84,7 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
     setQuestions(prev =>
       prev.map(q =>
         q.id === id
-          ? { ...q, [field]: value, updated_at: new Date().toISOString() }
+          ? { ...q, [field]: value }
           : q
       )
     );
@@ -132,37 +130,26 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
     setSaveStatus('saving');
     setError(null);
 
-    const questionsToSave = questions.map((q, index) => ({ ...q, order: index }));
-    const newQuestions = questionsToSave.filter(q => q.id.startsWith('new-')).map(q => ({ ...q, id: undefined }));
-    const existingQuestions = questionsToSave.filter(q => !q.id.startsWith('new-'));
+    // Update positions and prepare for save
+    const questionsToSave = questions.map((q, index) => ({
+      ...q,
+      position: index,
+      id: q.id?.startsWith('new-') ? undefined : q.id, // Remove temp IDs
+    }));
 
     try {
-      // Save/Update existing questions
-      if (existingQuestions.length > 0) {
-        const res = await fetch(`/api/questions?community_id=${encodeURIComponent(creatorId)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ questions: existingQuestions }),
-        });
-        if (!res.ok) throw new Error('Failed to update existing questions');
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error || 'Unknown error updating existing questions');
-      }
-
-      // Insert new questions
-      if (newQuestions.length > 0) {
-        const res = await fetch(`/api/questions?community_id=${encodeURIComponent(creatorId)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ questions: newQuestions }),
-        });
-        if (!res.ok) throw new Error('Failed to create new questions');
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error || 'Unknown error creating new questions');
-      }
+      const res = await fetch(`/api/questions/${encodeURIComponent(creatorId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: questionsToSave }),
+      });
+      
+      if (!res.ok) throw new Error('Failed to save questions');
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Unknown error saving questions');
 
       setSaveStatus('saved');
-      await fetchQuestions();
+      await fetchQuestions(); // Reload to get proper IDs
     } catch (err: any) {
       setError(err.message || 'Failed to save questions.');
       setSaveStatus('error');
@@ -210,12 +197,12 @@ function QuestionsPageContent({ searchParams }: QuestionsPageProps) {
           </button>
 
           <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-            <SortableContext items={questions.map(q => q.id)} strategy={verticalListSortingStrategy}>
+            <SortableContext items={questions.map(q => q.id || `temp-${questions.indexOf(q)}`)} strategy={verticalListSortingStrategy}>
               <div className="space-y-4">
                 {questions.length > 0 ? (
-                  questions.map(q => (
+                  questions.map((q, index) => (
                     <QuestionItem
-                      key={q.id}
+                      key={q.id || `temp-${index}`}
                       question={q}
                       onQuestionChange={handleQuestionChange}
                       onDeleteQuestion={handleDeleteQuestion}
@@ -272,7 +259,8 @@ function QuestionItem({
   onDeleteQuestion,
   saving,
 }: QuestionItemProps) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: question.id });
+  const questionId = question.id || `temp-${Date.now()}`;
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: questionId });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -281,27 +269,27 @@ function QuestionItem({
 
   const questionTypes = [
     { value: 'text', label: 'Short Text' },
-    { value: 'longtext', label: 'Long Text' },
+    { value: 'long_text', label: 'Long Text' },
     { value: 'email', label: 'Email' },
     { value: 'number', label: 'Number' },
-    { value: 'select', label: 'Single Select' },
-    { value: 'multiselect', label: 'Multi Select' },
+    { value: 'single_select', label: 'Single Select' },
+    { value: 'multi_select', label: 'Multi Select' },
   ];
 
   const handleAddOption = useCallback(() => {
-    onQuestionChange(question.id, 'options', [...(question.options || []), '']);
-  }, [question.id, question.options, onQuestionChange]);
+    onQuestionChange(questionId, 'options', [...(question.options || []), { value: '', label: '' }]);
+  }, [questionId, question.options, onQuestionChange]);
 
   const handleOptionChange = useCallback((index: number, value: string) => {
     const newOptions = [...(question.options || [])];
-    newOptions[index] = value;
-    onQuestionChange(question.id, 'options', newOptions);
-  }, [question.id, question.options, onQuestionChange]);
+    newOptions[index] = { value, label: value };
+    onQuestionChange(questionId, 'options', newOptions);
+  }, [questionId, question.options, onQuestionChange]);
 
   const handleRemoveOption = useCallback((index: number) => {
     const newOptions = (question.options || []).filter((_, i) => i !== index);
-    onQuestionChange(question.id, 'options', newOptions);
-  }, [question.id, question.options, onQuestionChange]);
+    onQuestionChange(questionId, 'options', newOptions);
+  }, [questionId, question.options, onQuestionChange]);
 
   return (
     <div
@@ -318,12 +306,12 @@ function QuestionItem({
       </div>
       <div className="space-y-3">
         <div>
-          <label htmlFor={`question-text-${question.id}`} className="block text-sm font-medium mb-1">Question Text</label>
+          <label htmlFor={`question-text-${questionId}`} className="block text-sm font-medium mb-1">Question Text</label>
           <input
             type="text"
-            id={`question-text-${question.id}`}
+            id={`question-text-${questionId}`}
             value={question.text}
-            onChange={(e) => onQuestionChange(question.id, 'text', e.target.value)}
+            onChange={(e) => onQuestionChange(questionId, 'text', e.target.value)}
             className="w-full"
             placeholder="e.g., What's your email?"
             disabled={saving}
@@ -332,11 +320,11 @@ function QuestionItem({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label htmlFor={`question-type-${question.id}`} className="block text-sm font-medium mb-1">Type</label>
+            <label htmlFor={`question-type-${questionId}`} className="block text-sm font-medium mb-1">Type</label>
             <select
-              id={`question-type-${question.id}`}
+              id={`question-type-${questionId}`}
               value={question.type}
-              onChange={(e) => onQuestionChange(question.id, 'type', e.target.value as Question['type'])}
+              onChange={(e) => onQuestionChange(questionId, 'type', e.target.value as Question['type'])}
               className="w-full"
               disabled={saving}
             >
@@ -349,8 +337,8 @@ function QuestionItem({
             <label className="inline-flex items-center text-sm">
               <input
                 type="checkbox"
-                checked={question.is_required}
-                onChange={(e) => onQuestionChange(question.id, 'is_required', e.target.checked)}
+                checked={question.required}
+                onChange={(e) => onQuestionChange(questionId, 'required', e.target.checked)}
                 disabled={saving}
                 className="form-checkbox"
               />
@@ -359,14 +347,14 @@ function QuestionItem({
           </div>
         </div>
 
-        {(question.type === 'select' || question.type === 'multiselect') && (
+        {(question.type === 'single_select' || question.type === 'multi_select') && (
           <div className="space-y-2 mt-3">
             <div className="font-medium text-sm">Options</div>
             {(question.options || []).map((option, index) => (
               <div key={index} className="flex gap-2 items-center">
                 <input
                   type="text"
-                  value={option}
+                  value={option.value || ''}
                   onChange={(e) => handleOptionChange(index, e.target.value)}
                   className="flex-1"
                   placeholder="Option text"
@@ -376,7 +364,7 @@ function QuestionItem({
                   type="button"
                   onClick={() => handleRemoveOption(index)}
                   disabled={saving}
-                  className="text-red-300 hover:text-red-500"
+                  className="text-red-600 hover:text-red-800"
                 >
                   <TrashIcon className="h-5 w-5" />
                 </button>
