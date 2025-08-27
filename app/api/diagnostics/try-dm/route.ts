@@ -61,19 +61,25 @@ export async function POST(req: Request) {
       console.log('[try-dm.POST] Calling sendWhopDmByUsername...');
       const result = await sendWhopDmByUsername(body.recipientUsername, messageBody);
       
-      console.log('[try-dm.POST] Whop API call successful:', {
+      console.log('[try-dm.POST] Whop API call completed:', {
         recipientUsername: body.recipientUsername,
-        resultKeys: Object.keys(result || {}),
-        hasResult: !!result
+        result: result
       });
       
-      return NextResponse.json({
-        ok: true,
-        status: 200,
-        recipientUsername: body.recipientUsername,
-        message: messageBody,
-        result,
-      });
+      // Return the result directly from sendWhopDmByUsername
+      if (result.ok) {
+        return NextResponse.json({
+          ok: true,
+          recipient: body.recipientUsername,
+          result: { id: result.id }
+        });
+      } else {
+        return NextResponse.json({
+          ok: false,
+          recipient: body.recipientUsername,
+          errors: result.errors
+        });
+      }
       
     } catch (dmError: any) {
       // If the upstream Whop API fails, return error details
@@ -87,10 +93,8 @@ export async function POST(req: Request) {
       
       return NextResponse.json({
         ok: false,
-        status: 401,
-        error: errorMessage,
-        recipientUsername: body.recipientUsername,
-        message: messageBody,
+        recipient: body.recipientUsername,
+        errors: [{ message: errorMessage }]
       });
     }
     

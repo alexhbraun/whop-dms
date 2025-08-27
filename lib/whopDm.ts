@@ -8,15 +8,20 @@ export async function sendWhopDmByUsername(username: string, message: string) {
     hasApiKey: !!process.env.WHOP_API_KEY
   });
 
-  // Log the full HTTP request details (without exposing the API key)
-  const requestBody = {
-    operation: "sendDirectMessageToUser",
+  const body = {
+    operationName: "SendDM",
+    query: `mutation SendDM($to: String!, $message: String!) {
+      sendDirectMessageToUser(toUserIdOrUsername: $to, message: $message) {
+        id
+      }
+    }`,
     variables: {
-      toUserIdOrUsername: username,
+      to: username,
       message,
     },
   };
-  
+
+  // Log the full HTTP request details (without exposing the API key)
   console.log('[whopDm] HTTP request to Whop:', {
     url: "https://api.whop.com/graphql",
     method: "POST",
@@ -24,7 +29,7 @@ export async function sendWhopDmByUsername(username: string, message: string) {
       "Content-Type": "application/json",
       "X-API-KEY": "***masked***"
     },
-    body: requestBody
+    body: body
   });
 
   const res = await fetch("https://api.whop.com/graphql", {
@@ -33,7 +38,7 @@ export async function sendWhopDmByUsername(username: string, message: string) {
       "Content-Type": "application/json",
       "X-API-KEY": process.env.WHOP_API_KEY!,
     },
-    body: JSON.stringify(requestBody),
+    body: JSON.stringify(body),
   });
 
   console.log('[whopDm] Whop API response received:', {
@@ -44,6 +49,7 @@ export async function sendWhopDmByUsername(username: string, message: string) {
   });
 
   const text = await res.text();
+  console.log("[whopDm] Raw Whop response:", text);
   
   console.log('[whopDm] Whop API response body:', {
     bodyLength: text.length,
@@ -51,31 +57,39 @@ export async function sendWhopDmByUsername(username: string, message: string) {
     isJson: text.trim().startsWith('{') || text.trim().startsWith('[')
   });
 
-  if (!res.ok) {
-    console.error('[whopDm] Whop API call failed:', {
-      status: res.status,
-      statusText: res.statusText,
-      body: text,
-      username
-    });
-    throw new Error(`Whop DM failed ${res.status}: ${text}`);
-  }
-
-  let parsedResult;
+  let json: any;
   try {
-    parsedResult = JSON.parse(text);
-    console.log('[whopDm] Successfully parsed JSON response:', {
-      resultKeys: Object.keys(parsedResult || {}),
-      hasData: !!parsedResult?.data,
-      hasErrors: !!parsedResult?.errors
-    });
+    json = JSON.parse(text);
   } catch (parseError: any) {
     console.error('[whopDm] Failed to parse JSON response:', {
       error: parseError?.message || 'Unknown parse error',
       body: text
     });
-    throw new Error(`Failed to parse Whop response: ${parseError?.message || 'Unknown error'}`);
+    throw new Error("Invalid JSON from Whop: " + text);
   }
 
-  return parsedResult;
+  // Check for GraphQL errors first
+  if (json.errors && json.errors.length > 0) {
+    console.error("[whopDm] Whop returned GraphQL errors:", json.errors);
+    return { ok: false, errors: json.errors };
+  }
+
+  // Check if we have the expected data structure
+  if (json.data?.sendDirectMessageToUser?.id) {
+    console.log('[whopDm] Successfully sent DM:', {
+      messageId: json.data.sendDirectMessageToUser.id,
+      username
+    });
+    return { ok: true, id: json.data.sendDirectMessageToUser.id };
+  }
+
+  // If we get here, something unexpected happened
+  console.error('[whopDm] Unexpected response structure:', {
+    hasData: !!json.data,
+    dataKeys: json.data ? Object.keys(json.data) : [],
+    hasSendDirectMessageToUser: !!json.data?.sendDirectMessageToUser,
+    response: json
+  });
+  
+  return { ok: false, errors: [{ message: "Unexpected response structure from Whop API" }] };
 }
