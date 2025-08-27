@@ -4,7 +4,12 @@
 export async function postGraphQL<T = any>(query: string, variables: any) {
   const apiKey = process.env.WHOP_API_KEY;
   if (!apiKey) {
-    return { status: 500, jsonText: "", error: "Missing WHOP_API_KEY" } as const;
+    return { 
+      status: 500, 
+      jsonText: "", 
+      json: undefined,
+      error: "Missing WHOP_API_KEY" 
+    } as const;
   }
   
   const res = await fetch("https://api.whop.com/graphql", {
@@ -25,7 +30,7 @@ export async function postGraphQL<T = any>(query: string, variables: any) {
     json = JSON.parse(jsonText); 
   } catch {} 
   
-  return { status, jsonText, json } as { status:number; jsonText:string; json?:T };
+  return { status, jsonText, json, error: undefined };
 }
 
 export function ensureEnv(key: string): string {

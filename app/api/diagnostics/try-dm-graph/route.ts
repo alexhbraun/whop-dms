@@ -109,29 +109,37 @@ export async function POST(req: Request) {
       const c = candidates[i];
       console.log(`[try-dm-graph] attempting ${i + 1}/${candidates.length}:`, c.name);
       
-      const { status, jsonText, json } = await postGraphQL(c.query, c.vars(to));
+      const result = await postGraphQL(c.query, c.vars(to));
       
       const r: AttemptResult = { 
         name: c.name, 
         success: false, 
-        httpStatus: status, 
+        httpStatus: result.status, 
         hasErrors: false 
       };
       
       console.log(`[try-dm-graph] ${c.name} response:`, {
-        status,
-        responseLength: jsonText.length,
-        hasJson: !!json
+        status: result.status,
+        responseLength: result.jsonText.length,
+        hasJson: !!result.json,
+        hasError: !!result.error
       });
       
-      if (!json) {
-        r.errorMessages = [`non-json: ${jsonText.slice(0, 200)}`];
+      if (result.error) {
+        r.errorMessages = [result.error];
+        tried.push(r);
+        console.log(`[try-dm-graph] ${c.name} failed: API error -`, result.error);
+        continue;
+      }
+      
+      if (!result.json) {
+        r.errorMessages = [`non-json: ${result.jsonText.slice(0, 200)}`];
         tried.push(r);
         console.log(`[try-dm-graph] ${c.name} failed: non-JSON response`);
         continue;
       }
       
-      const errors = Array.isArray(json.errors) ? json.errors : [];
+      const errors = Array.isArray(result.json.errors) ? result.json.errors : [];
       r.hasErrors = errors.length > 0;
       
       if (errors.length) {
@@ -139,7 +147,7 @@ export async function POST(req: Request) {
         console.log(`[try-dm-graph] ${c.name} has errors:`, r.errorMessages);
       }
       
-      const dataObj = json.data ?? {};
+      const dataObj = result.json.data ?? {};
       const dataKeys = Object.keys(dataObj);
       r.dataKeys = dataKeys;
       
@@ -167,7 +175,7 @@ export async function POST(req: Request) {
       console.log(`[try-dm-graph] ${c.name} failed or no ID found`);
     }
 
-    const result = {
+    const finalResult = {
       ok: !!winner,
       recipient,
       messageLength: msg.length,
@@ -176,12 +184,12 @@ export async function POST(req: Request) {
     };
     
     console.log("[try-dm-graph] final result:", {
-      ok: result.ok,
-      winner: result.winner?.name,
+      ok: finalResult.ok,
+      winner: finalResult.winner?.name,
       attempts: tried.length
     });
     
-    return NextResponse.json(result, { status: winner ? 200 : 400 });
+    return NextResponse.json(finalResult, { status: winner ? 200 : 400 });
     
   } catch (error: any) {
     console.error("[try-dm-graph] error during mutation testing:", {
