@@ -21,8 +21,33 @@ async function testDMAPI() {
     console.log(`   Error: ${error.message}\n`);
   }
 
-  // Test 2: GraphQL Introspection
-  console.log('2️⃣ Testing /api/diagnostics/graphql-introspect...');
+  // Test 2: Whop Schema Diagnostics (NEW)
+  console.log('2️⃣ Testing /api/diagnostics/whop-schema (POST)...');
+  try {
+    const response = await fetch(`${API_BASE}/api/diagnostics/whop-schema`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await response.json();
+    console.log(`   Status: ${response.status}`);
+    console.log(`   Response: ${JSON.stringify(data, null, 2)}\n`);
+  } catch (error) {
+    console.log(`   Error: ${error.message}\n`);
+  }
+
+  // Test 3: Whop Schema Diagnostics (GET)
+  console.log('3️⃣ Testing /api/diagnostics/whop-schema (GET)...');
+  try {
+    const response = await fetch(`${API_BASE}/api/diagnostics/whop-schema`);
+    const data = await response.json();
+    console.log(`   Status: ${response.status}`);
+    console.log(`   Response: ${JSON.stringify(data, null, 2)}\n`);
+  } catch (error) {
+    console.log(`   Error: ${error.message}\n`);
+  }
+
+  // Test 4: GraphQL Introspection
+  console.log('4️⃣ Testing /api/diagnostics/graphql-introspect...');
   try {
     const response = await fetch(`${API_BASE}/api/diagnostics/graphql-introspect`);
     const data = await response.json();
@@ -32,8 +57,8 @@ async function testDMAPI() {
     console.log(`   Error: ${error.message}\n`);
   }
 
-  // Test 3: Missing required fields
-  console.log('3️⃣ Testing missing required fields...');
+  // Test 5: Missing required fields
+  console.log('5️⃣ Testing missing required fields...');
   try {
     const response = await fetch(`${API_BASE}/api/diagnostics/try-dm`, {
       method: 'POST',
@@ -47,8 +72,8 @@ async function testDMAPI() {
     console.log(`   Error: ${error.message}\n`);
   }
 
-  // Test 4: Valid request with username
-  console.log('4️⃣ Testing valid request with username...');
+  // Test 6: Valid request with username
+  console.log('6️⃣ Testing valid request with username...');
   try {
     const response = await fetch(`${API_BASE}/api/diagnostics/try-dm`, {
       method: 'POST',
@@ -65,8 +90,8 @@ async function testDMAPI() {
     console.log(`   Error: ${error.message}\n`);
   }
 
-  // Test 5: Valid request with user ID
-  console.log('5️⃣ Testing valid request with user ID...');
+  // Test 7: Valid request with user ID
+  console.log('7️⃣ Testing valid request with user ID...');
   try {
     const response = await fetch(`${API_BASE}/api/diagnostics/try-dm`, {
       method: 'POST',
@@ -83,8 +108,8 @@ async function testDMAPI() {
     console.log(`   Error: ${error.message}\n`);
   }
 
-  // Test 6: GraphQL DM Testing with username
-  console.log('6️⃣ Testing /api/diagnostics/try-dm-graph with username...');
+  // Test 8: GraphQL DM Testing with username
+  console.log('8️⃣ Testing /api/diagnostics/try-dm-graph with username...');
   try {
     const response = await fetch(`${API_BASE}/api/diagnostics/try-dm-graph`, {
       method: 'POST',
@@ -101,8 +126,8 @@ async function testDMAPI() {
     console.log(`   Error: ${error.message}\n`);
   }
 
-  // Test 7: GraphQL DM Testing with user ID
-  console.log('7️⃣ Testing /api/diagnostics/try-dm-graph with user ID...');
+  // Test 9: GraphQL DM Testing with user ID
+  console.log('9️⃣ Testing /api/diagnostics/try-dm-graph with user ID...');
   try {
     const response = await fetch(`${API_BASE}/api/diagnostics/try-dm-graph`, {
       method: 'POST',
@@ -119,8 +144,8 @@ async function testDMAPI() {
     console.log(`   Error: ${error.message}\n`);
   }
 
-  // Test 8: GET /api/diagnostics/try-dm
-  console.log('8️⃣ Testing GET /api/diagnostics/try-dm...');
+  // Test 10: GET /api/diagnostics/try-dm
+  console.log('🔟 Testing GET /api/diagnostics/try-dm...');
   try {
     const response = await fetch(`${API_BASE}/api/diagnostics/try-dm`);
     const data = await response.json();
@@ -148,6 +173,10 @@ async function testDMAPI() {
   console.log(`curl -X POST ${API_BASE}/api/diagnostics/try-dm-graph \\`);
   console.log('  -H "content-type: application/json" \\');
   console.log('  -d \'{"recipientUsername":"AlexPaintingleads","message":"Hello from GraphQL diagnostics!"}\'');
+  
+  console.log('\n📊 To check Whop schema and DM candidates:');
+  console.log(`curl -s -X POST ${API_BASE}/api/diagnostics/whop-schema | jq`);
+  console.log(`curl -s -X POST ${API_BASE}/api/diagnostics/whop-schema | jq '.dmCandidates'`);
 }
 
 // Run the tests
