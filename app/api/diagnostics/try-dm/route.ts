@@ -4,7 +4,8 @@ import { sendWhopDmByUsername } from '@/lib/whopDm';
 export const runtime = 'nodejs';
 
 type Body = {
-  recipientUsername: string;  // username like "AlexPaintingleads"
+  recipientUsername?: string;  // username like "AlexPaintingleads"
+  recipientUserId?: string;    // user ID like "user_XXXXXX"
   message?: string;
 };
 
@@ -29,6 +30,7 @@ export async function POST(req: Request) {
     const body: Body = await req.json();
     console.log('[try-dm.POST] Inbound request body:', {
       recipientUsername: body.recipientUsername,
+      recipientUserId: body.recipientUserId,
       message: body.message,
       hasMessage: !!body.message,
       messageLength: body.message?.length || 0
@@ -42,27 +44,35 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!body.recipientUsername || typeof body.recipientUsername !== 'string') {
-      console.error('[try-dm.POST] Validation failed: recipientUsername is required and must be a string');
+    // Check that we have either a username or user ID
+    if (!body.recipientUsername && !body.recipientUserId) {
+      console.error('[try-dm.POST] Validation failed: either recipientUsername or recipientUserId is required');
       return NextResponse.json(
-        { ok: false, error: 'recipientUsername is required' },
+        { ok: false, error: 'Either recipientUsername or recipientUserId is required' },
         { status: 400 }
       );
     }
 
+    // Use recipientUserId if provided, otherwise fall back to recipientUsername
+    const recipient = body.recipientUserId || body.recipientUsername!;
+    console.log('[try-dm.POST] Using recipient:', {
+      recipient,
+      type: body.recipientUserId ? 'user_id' : 'username'
+    });
+
     const messageBody = body.message && body.message.trim().length ? body.message : 'Welcome to the community! 🎉 (diagnostics)';
     console.log('[try-dm.POST] Final message to send:', {
-      recipientUsername: body.recipientUsername,
+      recipient,
       message: messageBody,
       messageLength: messageBody.length
     });
 
     try {
       console.log('[try-dm.POST] Calling sendWhopDmByUsername...');
-      const result = await sendWhopDmByUsername(body.recipientUsername, messageBody);
+      const result = await sendWhopDmByUsername(recipient, messageBody);
       
       console.log('[try-dm.POST] Whop API call completed:', {
-        recipientUsername: body.recipientUsername,
+        recipient,
         result: result
       });
       
@@ -70,13 +80,13 @@ export async function POST(req: Request) {
       if (result.ok) {
         return NextResponse.json({
           ok: true,
-          recipient: body.recipientUsername,
+          recipient,
           result: { id: result.id }
         });
       } else {
         return NextResponse.json({
           ok: false,
-          recipient: body.recipientUsername,
+          recipient,
           errors: result.errors
         });
       }
@@ -85,7 +95,7 @@ export async function POST(req: Request) {
       // If the upstream Whop API fails, return error details
       const errorMessage = dmError.message || 'Unknown error';
       console.error('[try-dm.POST] DM sending failed:', {
-        recipientUsername: body.recipientUsername,
+        recipient,
         error: errorMessage,
         errorType: dmError.constructor.name,
         hasStack: !!dmError.stack
@@ -93,7 +103,7 @@ export async function POST(req: Request) {
       
       return NextResponse.json({
         ok: false,
-        recipient: body.recipientUsername,
+        recipient,
         errors: [{ message: errorMessage }]
       });
     }
@@ -103,7 +113,7 @@ export async function POST(req: Request) {
       error: e?.message || 'Unknown error',
       errorType: e?.constructor?.name || 'unknown',
       hasStack: !!e?.stack,
-      recipientUsername: e?.recipientUsername || 'unknown'
+      recipient: e?.recipient || 'unknown'
     });
     
     return NextResponse.json(

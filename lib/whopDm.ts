@@ -8,17 +8,21 @@ export async function sendWhopDmByUsername(username: string, message: string) {
     hasApiKey: !!process.env.WHOP_API_KEY
   });
 
+  const query = `
+    mutation SendDM($toUserIdOrUsername: String!, $message: String!) {
+      sendDirectMessageToUser(
+        toUserIdOrUsername: $toUserIdOrUsername,
+        message: $message
+      ) { id }
+    }
+  `;
+
   const body = {
-    operationName: "SendDM",
-    query: `mutation SendDM($to: String!, $message: String!) {
-      sendDirectMessageToUser(toUserIdOrUsername: $to, message: $message) {
-        id
-      }
-    }`,
+    query,
     variables: {
-      to: username,
-      message,
-    },
+      toUserIdOrUsername: username,   // can be a username (e.g. "AlexPaintingleads") or userId
+      message
+    }
   };
 
   // Log the full HTTP request details (without exposing the API key)
@@ -32,7 +36,7 @@ export async function sendWhopDmByUsername(username: string, message: string) {
     body: body
   });
 
-  const res = await fetch("https://api.whop.com/graphql", {
+  const resp = await fetch("https://api.whop.com/graphql", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -42,13 +46,14 @@ export async function sendWhopDmByUsername(username: string, message: string) {
   });
 
   console.log('[whopDm] Whop API response received:', {
-    status: res.status,
-    statusText: res.statusText,
-    ok: res.ok,
-    headers: Object.fromEntries(res.headers.entries())
+    status: resp.status,
+    statusText: resp.statusText,
+    ok: resp.ok,
+    headers: Object.fromEntries(resp.headers.entries()),
+    requestId: resp.headers.get('x-request-id') || 'not provided'
   });
 
-  const text = await res.text();
+  const text = await resp.text();
   console.log("[whopDm] Raw Whop response:", text);
   
   console.log('[whopDm] Whop API response body:', {
@@ -59,7 +64,8 @@ export async function sendWhopDmByUsername(username: string, message: string) {
 
   let json: any;
   try {
-    json = JSON.parse(text);
+    json = await resp.json();
+    console.log("[whopDm] response", JSON.stringify(json, null, 2));
   } catch (parseError: any) {
     console.error('[whopDm] Failed to parse JSON response:', {
       error: parseError?.message || 'Unknown parse error',
