@@ -1,173 +1,158 @@
-# Whop DM Diagnostic API
+# Whop DM Diagnostics API
 
-This document describes the diagnostic API endpoints for testing Whop DM functionality using GraphQL.
-
-## Overview
-
-The diagnostic API provides isolated testing of Whop DM capabilities without depending on the UI. It uses Whop's GraphQL endpoint with `X-API-KEY` header for authentication.
+This document describes the diagnostic endpoints for testing Whop Direct Message functionality.
 
 ## Endpoints
 
-### 1. GET `/api/diagnostics/ping-whop`
+### 1. `/api/diagnostics/ping-whop` (GET)
+Basic health check to verify Whop API key presence.
 
-Sanity check endpoint to verify Whop API configuration.
-
-#### Response
-
+**Response:**
 ```json
 {
   "ok": true,
   "hasKey": true,
   "headerNameUsed": "X-API-KEY",
-  "timestamp": "2025-08-27T09:56:21.724Z"
+  "timestamp": "2024-01-01T00:00:00.000Z"
 }
 ```
 
-### 2. GET `/api/diagnostics/try-dm`
+### 2. `/api/diagnostics/try-dm` (POST)
+Tests the original REST-based DM sending (legacy endpoint).
 
-Returns reachability info.
-
-#### Response
-
-```json
-{
-  "ok": true,
-  "info": "GET reachable; POST to attempt a DM"
-}
-```
-
-### 3. POST `/api/diagnostics/try-dm`
-
-Tests the ability to send a DM to a specific user by username.
-
-#### Request Body
-
+**Request Body:**
 ```json
 {
   "recipientUsername": "AlexPaintingleads",
-  "message": "Welcome to the community! 🎉 (diagnostics)"
+  "message": "Hello from diagnostics!"
 }
 ```
 
-#### Response (Success)
+**Response:**
+```json
+{
+  "ok": true,
+  "recipient": "AlexPaintingleads",
+  "result": { "id": "msg_123456" }
+}
+```
 
+### 3. `/api/diagnostics/graphql-introspect` (GET) ⭐ NEW
+Introspects the Whop GraphQL schema to discover available mutations and queries.
+
+**Response:**
 ```json
 {
   "ok": true,
   "status": 200,
-  "recipientUsername": "AlexPaintingleads",
-  "message": "Welcome to the community! 🎉 (diagnostics)",
-  "result": { ... }
+  "mutations": ["sendDirectMessageToUser", "createUser", ...],
+  "queries": ["user", "company", ...]
 }
 ```
 
-#### Response (Error)
+**Purpose:** Discover what mutations are actually available in the Whop API schema for your app key.
 
+### 4. `/api/diagnostics/try-dm-graph` (POST) ⭐ NEW
+Systematically tests different GraphQL mutation candidates to find the correct one for sending DMs.
+
+**Request Body:**
 ```json
 {
-  "ok": false,
-  "status": 401,
-  "error": "Whop DM failed 401: Unauthorized",
   "recipientUsername": "AlexPaintingleads",
-  "message": "Welcome to the community! 🎉 (diagnostics)"
+  "message": "Hello from GraphQL diagnostics!"
 }
 ```
 
-## Environment Variables
-
-### Required
-
-- `WHOP_API_KEY`: Your Whop app API key (used in `X-API-KEY` header)
-
-## Implementation Details
-
-### Whop DM Helper (`lib/whopDm.ts`)
-
-```typescript
-export async function sendWhopDmByUsername(username: string, message: string) {
-  const res = await fetch("https://api.whop.com/graphql", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-KEY": process.env.WHOP_API_KEY!,
+**Response:**
+```json
+{
+  "ok": true,
+  "recipient": { "type": "username", "value": "AlexPaintingleads" },
+  "messageLength": 35,
+  "tried": [
+    {
+      "name": "sendDirectMessageToUser",
+      "success": false,
+      "httpStatus": 200,
+      "hasErrors": true,
+      "dataKeys": [],
+      "errorMessages": ["Field 'sendDirectMessageToUser' doesn't exist on type 'Mutation'"]
     },
-    body: JSON.stringify({
-      operation: "sendDirectMessageToUser",
-      variables: {
-        toUserIdOrUsername: username,
-        message,
-      },
-    }),
-  });
-
-  const text = await res.text();
-  if (!res.ok) {
-    console.error("Whop DM failed:", text);
-    throw new Error(`Whop DM failed ${res.status}: ${text}`);
-  }
-  return JSON.parse(text);
+    {
+      "name": "messagesSendDirectMessageToUser",
+      "success": true,
+      "httpStatus": 200,
+      "hasErrors": false,
+      "dataKeys": ["messagesSendDirectMessageToUser"],
+      "id": "msg_123456"
+    }
+  ],
+  "winner": { "name": "messagesSendDirectMessageToUser", "id": "msg_123456" }
 }
 ```
 
-## Testing
+**Purpose:** Find the correct mutation name and structure by testing multiple candidates.
 
-### 1. Run the test script
+## Testing Strategy
 
+### Step 1: Schema Discovery
 ```bash
-node scripts/test-dm-api.js
+curl https://whop-dms.vercel.app/api/diagnostics/graphql-introspect
 ```
 
-### 2. Test with real username
+This will show you all available mutations and queries in the Whop API schema.
 
+### Step 2: Mutation Testing
 ```bash
-curl -X POST "https://whop-dms.vercel.app/api/diagnostics/try-dm" \
-  -H "Content-Type: application/json" \
+curl -X POST https://whop-dms.vercel.app/api/diagnostics/try-dm-graph \
+  -H "content-type: application/json" \
   -d '{"recipientUsername":"AlexPaintingleads","message":"Hello from diagnostics!"}'
 ```
 
-### 3. PowerShell testing
+This will systematically test different mutation candidates and tell you which one works.
 
-```powershell
-(Invoke-WebRequest `
-  -Uri "https://whop-dms.vercel.app/api/diagnostics/try-dm" `
-  -Method POST `
-  -Headers @{ "Content-Type" = "application/json" } `
-  -Body '{"recipientUsername":"AlexPaintingleads","message":"Hello from diagnostics!"}' `
-).Content
-```
+### Step 3: Use the Working Mutation
+Once you find the working mutation, update your production code to use that specific mutation name and structure.
 
-### 4. Test ping endpoint
+## Mutation Candidates Tested
 
-```bash
-curl https://whop-dms.vercel.app/api/diagnostics/ping-whop
-```
+The system tests these mutations in order:
 
-## Error Handling
+1. **`sendDirectMessageToUser`** - Standard mutation name
+2. **`messagesSendDirectMessageToUser`** - Namespaced mutation name
+3. **`sendDirectMessage(input)`** - Input object pattern
+4. **`sendMessageToUser`** - Alternative naming
 
-The API handles various error scenarios:
+## Environment Variables
 
-- **400 Bad Request**: Missing or invalid required fields
-- **401 Unauthorized**: Whop API authentication/authorization failed
-- **500 Internal Server Error**: Missing WHOP_API_KEY or unexpected errors
+- `WHOP_API_KEY` - Required for all endpoints
+- `NODE_ENV` - Logged for debugging
 
-## Security Features
+## Logging
 
-- **API Key Masking**: `WHOP_API_KEY` is never logged or exposed in responses
-- **Server-only**: All DM logic runs server-side, no client exposure
-- **GraphQL Endpoint**: Uses Whop's official GraphQL API
+All endpoints include comprehensive logging with prefixes:
+- `[introspect]` - GraphQL introspection endpoint
+- `[try-dm-graph]` - GraphQL mutation testing endpoint
+- `[try-dm]` - Original REST endpoint
+- `[ping-whop]` - Health check endpoint
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **"Missing WHOP_API_KEY"**: Ensure `WHOP_API_KEY` is set in Vercel environment variables
-2. **"Whop DM failed 401"**: Your API key lacks permission or is invalid
-3. **"Whop DM failed 404"**: Invalid/unknown recipient username
-4. **"Whop DM failed 422"**: Payload shape mismatch with Whop's GraphQL schema
+1. **"Field doesn't exist on type 'Mutation'"** - The mutation name is incorrect
+2. **"No query string was present"** - GraphQL request format is wrong
+3. **"Uh-oh... (3301)"** - Unknown Whop API error, check schema
 
-### Debug Steps
+### Debugging Steps
 
-1. Check `/api/diagnostics/ping-whop` to verify API key presence
-2. Verify `WHOP_API_KEY` is set in Vercel project settings
-3. Test with a known valid username
-4. Check Vercel function logs for detailed error information
+1. Check Vercel logs for detailed request/response information
+2. Use introspection to see available mutations
+3. Test mutation candidates systematically
+4. Verify environment variables are set correctly
+
+## Security Notes
+
+- API keys are never logged in full
+- All endpoints are production-safe
+- No sensitive data is exposed in responses
