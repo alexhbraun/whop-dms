@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { sendDirectDM } from '@/lib/whopMessaging';
+import { sendWhopDmByUsername } from '@/lib/whopDm';
 
 export const runtime = 'nodejs';
 
 type Body = {
-  recipient: string;     // user id or @username
+  recipientUsername: string;  // username like "AlexPaintingleads"
   message?: string;
 };
 
@@ -14,7 +14,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const { recipient, message }: Body = await req.json();
+    const { recipientUsername, message }: Body = await req.json();
 
     if (!process.env.WHOP_API_KEY) {
       return NextResponse.json(
@@ -23,25 +23,42 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!recipient || typeof recipient !== 'string') {
+    if (!recipientUsername || typeof recipientUsername !== 'string') {
       return NextResponse.json(
-        { ok: false, error: 'recipient is required (user id or @username)' },
+        { ok: false, error: 'recipientUsername is required' },
         { status: 400 }
       );
     }
 
-    const body = message && message.trim().length ? message : 'Test from Whop DMS diagnostics';
+    const body = message && message.trim().length ? message : 'Welcome to the community! 🎉 (diagnostics)';
 
-    const result = await sendDirectDM({ toUserIdOrUsername: recipient, message: body });
-
-    return NextResponse.json({
-      ok: result.ok,
-      status: result.status,
-      recipient,
-      message: body,
-      raw: result.data,
-    });
+    try {
+      const result = await sendWhopDmByUsername(recipientUsername, body);
+      
+      return NextResponse.json({
+        ok: true,
+        status: 200,
+        recipientUsername,
+        message: body,
+        result,
+      });
+      
+    } catch (dmError: any) {
+      // If the upstream Whop API fails, return error details
+      const errorMessage = dmError.message || 'Unknown error';
+      console.error(`[try-dm] DM failed for ${recipientUsername}:`, errorMessage);
+      
+      return NextResponse.json({
+        ok: false,
+        status: 401,
+        error: errorMessage,
+        recipientUsername,
+        message: body,
+      });
+    }
+    
   } catch (e: any) {
+    console.error('[try-dm] Request handling error:', e?.message);
     return NextResponse.json(
       { ok: false, error: e?.message ?? 'Failed to handle request' },
       { status: 400 }
