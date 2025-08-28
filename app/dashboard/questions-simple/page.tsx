@@ -362,3 +362,4 @@ export default function QuestionsSimplePage({ searchParams }: { searchParams?: a
     </div>
   );
 }
+

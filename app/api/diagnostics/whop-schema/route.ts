@@ -1,6 +1,8 @@
 // app/api/diagnostics/whop-schema/route.ts
 import { NextResponse } from "next/server";
 import { postWhopGraph } from "@/lib/whopGraph";
+import { requireAdmin } from "@/lib/api/authz";
+import { log } from "@/lib/log";
 
 export const runtime = 'nodejs';
 
@@ -11,41 +13,46 @@ export async function GET() {
   });
 }
 
-export async function POST() {
-  console.log("[whop-schema] Starting schema introspection");
+export async function POST(req: Request) {
+  // Require admin authorization
+  requireAdmin(req);
+  
+  log.info('whop-schema.POST', 'Starting schema introspection');
   
   try {
     // Check if API key is available
     if (!process.env.WHOP_API_KEY) {
-      console.error("[whop-schema] Missing WHOP_API_KEY environment variable");
+      log.error('whop-schema.POST', 'Missing WHOP_API_KEY environment variable');
       return NextResponse.json({ 
         ok: false, 
         error: "Missing WHOP_API_KEY environment variable" 
       }, { status: 500 });
     }
     
-    console.log("[whop-schema] WHOP_API_KEY is present, proceeding with schema checks");
+    log.info('whop-schema.POST', 'WHOP_API_KEY is present, proceeding with schema checks');
     
     // 1. Basic sanity query
-    console.log("[whop-schema] Running basic sanity query: __typename");
+    log.info('whop-schema.POST', { message: 'Running basic sanity query: __typename' });
     const sanityResult = await postWhopGraph("query { __typename }");
-    console.log("[whop-schema] Sanity query result:", {
+    log.info('whop-schema.POST', {
+      message: 'Sanity query result',
       status: sanityResult.status,
       ok: sanityResult.ok,
       bodyPreview: sanityResult.text.slice(0, 200)
     });
     
     // 2. Schema probe query
-    console.log("[whop-schema] Running schema probe query");
+    log.info('whop-schema.POST', { message: 'Running schema probe query' });
     const probeResult = await postWhopGraph("query { __schema { queryType { name } } }");
-    console.log("[whop-schema] Schema probe result:", {
+    log.info('whop-schema.POST', {
+      message: 'Schema probe result',
       status: probeResult.status,
       ok: probeResult.ok,
       bodyPreview: probeResult.text.slice(0, 200)
     });
     
     // 3. Full mutation introspection
-    console.log("[whop-schema] Running full mutation introspection");
+    log.info('whop-schema.POST', { message: 'Running full mutation introspection' });
     const mutationResult = await postWhopGraph(`
       query IntrospectMutations {
         __schema {
@@ -59,7 +66,8 @@ export async function POST() {
       }
     `);
     
-    console.log("[whop-schema] Mutation introspection result:", {
+    log.info('whop-schema.POST', {
+      message: 'Mutation introspection result',
       status: mutationResult.status,
       ok: mutationResult.ok,
       bodyPreview: mutationResult.text.slice(0, 200)
@@ -74,13 +82,14 @@ export async function POST() {
       mutationFieldsCount = fields.length;
       mutationsSample = fields.slice(0, 50).map((f: any) => f.name);
       
-      console.log("[whop-schema] Extracted mutations:", {
+      log.info('whop-schema.POST', {
+        message: 'Extracted mutations',
         totalCount: mutationFieldsCount,
         sampleCount: mutationsSample.length,
         firstFew: mutationsSample.slice(0, 5)
       });
     } else {
-      console.log("[whop-schema] No mutation fields found in response");
+      log.info('whop-schema.POST', { message: 'No mutation fields found in response' });
     }
     
     // 4. Check for DM candidates
@@ -91,7 +100,7 @@ export async function POST() {
       sendMessageToUser: mutationsSample.includes("sendMessageToUser")
     };
     
-    console.log("[whop-schema] DM candidates check:", dmCandidates);
+    log.info('whop-schema.POST', { message: 'DM candidates check', dmCandidates });
     
     // 5. Prepare response
     const response = {
@@ -106,7 +115,8 @@ export async function POST() {
       dmCandidates
     };
     
-    console.log("[whop-schema] Final response:", {
+    log.info('whop-schema.POST', {
+      message: 'Final response',
       ok: response.ok,
       hasKey: response.hasKey,
       mutationFieldsCount: response.mutationFieldsCount,
@@ -116,7 +126,8 @@ export async function POST() {
     return NextResponse.json(response);
     
   } catch (error: any) {
-    console.error("[whop-schema] Error during schema introspection:", {
+    log.error('whop-schema.POST', {
+      message: 'Error during schema introspection',
       error: error?.message || 'Unknown error',
       errorType: error?.constructor?.name || 'unknown',
       hasStack: !!error?.stack
@@ -128,3 +139,4 @@ export async function POST() {
     }, { status: 500 });
   }
 }
+

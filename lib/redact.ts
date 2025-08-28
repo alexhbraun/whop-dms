@@ -5,3 +5,4 @@ export function redact(value?: string | null, showTail = 4) {
   if (v.length <= showTail) return '••••';
   return '••••' + v.slice(-showTail);
 }
+

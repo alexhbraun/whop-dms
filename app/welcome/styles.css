@@ -1,0 +1,60 @@
+/* app/welcome/styles.css */
+/* Custom styles for the welcome page */
+
+.welcome-gradient {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.welcome-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.welcome-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.welcome-icon {
+  transition: all 0.2s ease-in-out;
+}
+
+.welcome-card:hover .welcome-icon {
+  transform: scale(1.1);
+}
+
+/* Trust badge animations */
+.trust-badge {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+.trust-badge:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* CTA grid responsive adjustments */
+@media (max-width: 768px) {
+  .welcome-cta-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Loading state for personalization */
+.welcome-loading {
+  opacity: 0.7;
+  transition: opacity 0.3s ease;
+}
+
+.welcome-loaded {
+  opacity: 1;
+}

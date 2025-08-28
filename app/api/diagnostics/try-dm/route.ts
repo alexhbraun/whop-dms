@@ -1,124 +1,113 @@
-import { NextResponse } from 'next/server';
-import { sendWhopDmByUsername } from '@/lib/whopDm';
+// app/api/diagnostics/try-dm/route.ts
+import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/api/authz";
+import { sendDirectMessage } from "@/lib/messaging";
+import { log } from "@/lib/log";
 
 export const runtime = 'nodejs';
 
-type Body = {
-  recipientUsername?: string;  // username like "AlexPaintingleads"
-  recipientUserId?: string;    // user ID like "user_XXXXXX"
-  message?: string;
+type Body = { 
+  recipientUsername?: string; 
+  recipientUserId?: string; 
+  message?: string 
 };
 
 export async function GET() {
-  console.log('[try-dm.GET] Endpoint reached');
-  return NextResponse.json({ ok: true, info: 'GET reachable; POST to attempt a DM' });
+  return NextResponse.json({ 
+    ok: true, 
+    info: "POST to test DM functionality" 
+  });
 }
 
 export async function POST(req: Request) {
-  console.log('[try-dm.POST] Request started');
+  // Require admin authorization
+  requireAdmin(req);
+  
+  log.info('try-dm.POST', { message: 'DM test requested' });
   
   try {
-    // Log environment variables (without exposing values)
-    console.log('[try-dm.POST] Environment check:', {
-      NEXT_PUBLIC_WHOP_COMPANY_ID: process.env.NEXT_PUBLIC_WHOP_COMPANY_ID ? 'present' : 'missing',
-      NEXT_PUBLIC_WHOP_AGENT_USER_ID: process.env.NEXT_PUBLIC_WHOP_AGENT_USER_ID ? 'present' : 'missing',
-      WHOP_API_KEY: process.env.WHOP_API_KEY ? 'present' : 'missing',
-      NODE_ENV: process.env.NODE_ENV || 'not set'
-    });
-
-    // Parse and log the inbound request body
-    const body: Body = await req.json();
-    console.log('[try-dm.POST] Inbound request body:', {
-      recipientUsername: body.recipientUsername,
-      recipientUserId: body.recipientUserId,
-      message: body.message,
+    const body = (await req.json().catch(() => ({}))) as Body;
+    const msg = (body.message ?? "Test message from diagnostics").toString();
+    
+    log.info('try-dm.POST', {
+      message: 'Request body received',
+      hasRecipientUsername: !!body.recipientUsername,
+      hasRecipientUserId: !!body.recipientUserId,
       hasMessage: !!body.message,
-      messageLength: body.message?.length || 0
+      messageLength: msg.length
     });
-
-    if (!process.env.WHOP_API_KEY) {
-      console.error('[try-dm.POST] Missing WHOP_API_KEY environment variable');
-      return NextResponse.json(
-        { ok: false, error: 'Missing WHOP_API_KEY' },
-        { status: 500 }
-      );
+    
+    const recipient = body.recipientUserId
+      ? { type: "userId" as const, value: body.recipientUserId }
+      : body.recipientUsername
+        ? { type: "username" as const, value: body.recipientUsername.replace(/^@/, "") }
+        : null;
+        
+    if (!recipient) {
+      log.warn('try-dm.POST', { message: 'Validation failed: missing recipient' });
+      return NextResponse.json({ 
+        ok: false, 
+        error: "recipientUsername or recipientUserId required" 
+      }, { status: 400 });
+    }
+    
+    if (!msg) {
+      log.warn('try-dm.POST', { message: 'Validation failed: missing message' });
+      return NextResponse.json({ 
+        ok: false, 
+        error: "message required" 
+      }, { status: 400 });
     }
 
-    // Check that we have either a username or user ID
-    if (!body.recipientUsername && !body.recipientUserId) {
-      console.error('[try-dm.POST] Validation failed: either recipientUsername or recipientUserId is required');
-      return NextResponse.json(
-        { ok: false, error: 'Either recipientUsername or recipientUserId is required' },
-        { status: 400 }
-      );
-    }
-
-    // Use recipientUserId if provided, otherwise fall back to recipientUsername
-    const recipient = body.recipientUserId || body.recipientUsername!;
-    console.log('[try-dm.POST] Using recipient:', {
-      recipient,
-      type: body.recipientUserId ? 'user_id' : 'username'
+    log.info('try-dm.POST', {
+      message: 'Using recipient',
+      type: recipient.type,
+      value: recipient.value,
+      messageLength: msg.length
     });
 
-    const messageBody = body.message && body.message.trim().length ? body.message : 'Welcome to the community! 🎉 (diagnostics)';
-    console.log('[try-dm.POST] Final message to send:', {
-      recipient,
-      message: messageBody,
-      messageLength: messageBody.length
+    // Use the messaging service boundary
+    const result = await sendDirectMessage({
+      toUserId: recipient.type === 'userId' ? recipient.value : undefined,
+      toUsername: recipient.type === 'username' ? recipient.value : undefined,
+      message: msg
     });
 
-    try {
-      console.log('[try-dm.POST] Calling sendWhopDmByUsername...');
-      const result = await sendWhopDmByUsername(recipient, messageBody);
-      
-      console.log('[try-dm.POST] Whop API call completed:', {
-        recipient,
-        result: result
-      });
-      
-      // Return the result directly from sendWhopDmByUsername
-      if (result.ok) {
-        return NextResponse.json({
-          ok: true,
-          recipient,
-          result: { id: result.id }
-        });
-      } else {
-        return NextResponse.json({
-          ok: false,
-          recipient,
-          errors: result.errors
-        });
+    log.info('try-dm.POST', {
+      message: 'DM result received',
+      ok: result.ok,
+      skipped: result.skipped,
+      reason: result.reason,
+      provider: result.provider,
+      id: result.id
+    });
+
+    const response = {
+      ok: result.ok,
+      recipient,
+      message: msg,
+      result: {
+        ok: result.ok,
+        skipped: result.skipped,
+        reason: result.reason,
+        provider: result.provider,
+        id: result.id,
+        timestamp: result.timestamp
       }
-      
-    } catch (dmError: any) {
-      // If the upstream Whop API fails, return error details
-      const errorMessage = dmError.message || 'Unknown error';
-      console.error('[try-dm.POST] DM sending failed:', {
-        recipient,
-        error: errorMessage,
-        errorType: dmError.constructor.name,
-        hasStack: !!dmError.stack
-      });
-      
-      return NextResponse.json({
-        ok: false,
-        recipient,
-        errors: [{ message: errorMessage }]
-      });
-    }
+    };
     
-  } catch (e: any) {
-    console.error('[try-dm.POST] Request handling error:', {
-      error: e?.message || 'Unknown error',
-      errorType: e?.constructor?.name || 'unknown',
-      hasStack: !!e?.stack,
-      recipient: e?.recipient || 'unknown'
+    return NextResponse.json(response, { status: result.ok ? 200 : 400 });
+    
+  } catch (error: any) {
+    log.error('try-dm.POST', {
+      message: 'Error during DM test',
+      error: error?.message || 'Unknown error',
+      errorType: error?.constructor?.name || 'unknown'
     });
     
-    return NextResponse.json(
-      { ok: false, error: e?.message ?? 'Failed to handle request' },
-      { status: 400 }
-    );
+    return NextResponse.json({ 
+      ok: false, 
+      error: error?.message ?? 'Failed to test DM functionality' 
+    }, { status: 500 });
   }
 }
