@@ -9,6 +9,7 @@ export async function sendViaWhopGraph(opts: SendOpts): Promise<SendResult> {
   const startTime = Date.now();
   
   log.info('whopGraph.send', {
+    message: 'Starting GraphQL DM send',
     recipient: opts.toUserId || opts.toUsername,
     messageLength: opts.message.length,
     hasApiKey: !!process.env.WHOP_API_KEY
@@ -16,7 +17,7 @@ export async function sendViaWhopGraph(opts: SendOpts): Promise<SendResult> {
 
   // Check if required environment is available
   if (!process.env.WHOP_API_KEY) {
-    log.warn('whopGraph.send', 'Missing WHOP_API_KEY environment variable');
+    log.warn('whopGraph.send', { message: 'Missing WHOP_API_KEY environment variable' });
     return {
       ok: false,
       skipped: true,
@@ -81,26 +82,27 @@ export async function sendViaWhopGraph(opts: SendOpts): Promise<SendResult> {
     let winner: { name: string; id: string } | undefined;
 
     for (const candidate of candidates) {
-      log.info('whopGraph.send', `Trying mutation: ${candidate.name}`);
+      log.info('whopGraph.send', { message: `Trying mutation: ${candidate.name}` });
       
       const result = await postWhopGraph(candidate.query, candidate.vars(recipient));
       
-      if (result.error || !result.ok) {
-        log.warn('whopGraph.send', `${candidate.name} failed:`, {
+      if (!result.ok) {
+        log.warn('whopGraph.send', {
+          message: `${candidate.name} failed`,
           status: result.status,
-          error: result.error || 'HTTP error'
+          error: 'HTTP error'
         });
         continue;
       }
 
       if (!result.json) {
-        log.warn('whopGraph.send', `${candidate.name} returned non-JSON response`);
+        log.warn('whopGraph.send', { message: `${candidate.name} returned non-JSON response` });
         continue;
       }
 
       const errors = Array.isArray(result.json.errors) ? result.json.errors : [];
       if (errors.length > 0) {
-        log.warn('whopGraph.send', `${candidate.name} GraphQL errors:`, errors);
+        log.warn('whopGraph.send', { message: `${candidate.name} GraphQL errors`, errors });
         continue;
       }
 
@@ -118,14 +120,15 @@ export async function sendViaWhopGraph(opts: SendOpts): Promise<SendResult> {
 
       if (id) {
         winner = { name: candidate.name, id };
-        log.info('whopGraph.send', `SUCCESS with ${candidate.name}:`, { messageId: id });
+        log.info('whopGraph.send', { message: `SUCCESS with ${candidate.name}`, messageId: id });
         break;
       }
     }
 
     if (winner) {
       const duration = Date.now() - startTime;
-      log.info('whopGraph.send', 'Message sent successfully', {
+      log.info('whopGraph.send', {
+        message: 'Message sent successfully',
         provider: 'whop-graphql',
         mutation: winner.name,
         messageId: winner.id,
@@ -141,7 +144,7 @@ export async function sendViaWhopGraph(opts: SendOpts): Promise<SendResult> {
     }
 
     // All candidates failed
-    log.error('whopGraph.send', 'All GraphQL mutations failed');
+    log.error('whopGraph.send', { message: 'All GraphQL mutations failed' });
     return {
       ok: false,
       skipped: false,
@@ -152,7 +155,8 @@ export async function sendViaWhopGraph(opts: SendOpts): Promise<SendResult> {
 
   } catch (error: any) {
     const duration = Date.now() - startTime;
-    log.error('whopGraph.send', 'Unexpected error during send', {
+    log.error('whopGraph.send', {
+      message: 'Unexpected error during send',
       error: error?.message || 'Unknown error',
       duration: `${duration}ms`
     });

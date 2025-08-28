@@ -8,7 +8,7 @@ export const DM_ROLLOUT_PCT = Number(process.env.DM_ROLLOUT_PCT ?? '0');
 export function dmAllowedForUser(seed: string) {
   // deterministic rollout gating; stable per user/username
   if (!DM_ENABLED) return false;
-  const h = [...seed].reduce((a, c) => ((a << 5) - a) + c.charCodeAt(0), 0) >>> 0;
+  const h = seed.split('').reduce((a, c) => ((a << 5) - a) + c.charCodeAt(0), 0) >>> 0;
   return (h % 100) < DM_ROLLOUT_PCT;
 }
 

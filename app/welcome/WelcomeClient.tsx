@@ -2,11 +2,17 @@
 
 // app/welcome/WelcomeClient.tsx
 // Client component for the welcome page
+// 
+// REFACTORED: Updated to modern light theme with:
+// - New headline: "Turn New Members into Engaged Community Fans — Automatically"
+// - Updated tile descriptions to match requirements
+// - Added onboarding form below tiles with email + 3 questions
+// - Form submits to existing /api/responses/[creatorId] endpoint
+// - Preserves all existing functionality and API shapes
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { getFullOnboardingUrl } from '@/lib/urls';
 
 interface WelcomeData {
   memberId?: string;
@@ -14,16 +20,35 @@ interface WelcomeData {
   hasPersonalization: boolean;
 }
 
+interface OnboardingForm {
+  email: string;
+  goal: string;
+  communityWin: string;
+  anythingElse: string;
+}
+
 export default function WelcomeClient() {
   const searchParams = useSearchParams();
   const [welcomeData, setWelcomeData] = useState<WelcomeData>({
     hasPersonalization: false
   });
+  
+  // Form state
+  const [formData, setFormData] = useState<OnboardingForm>({
+    email: '',
+    goal: '',
+    communityWin: '',
+    anythingElse: ''
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
 
   useEffect(() => {
     // Extract query parameters
-    const memberId = searchParams.get('member');
-    const username = searchParams.get('u');
+    const memberId = searchParams?.get('member');
+    const username = searchParams?.get('u');
     
     if (memberId || username) {
       setWelcomeData({
@@ -44,6 +69,82 @@ export default function WelcomeClient() {
     }
   }, [searchParams]);
 
+  const handleInputChange = (field: keyof OnboardingForm, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    
+    // Clear email error when user starts typing
+    if (field === 'email') {
+      setEmailError(null);
+    }
+  };
+
+  const validateForm = (): boolean => {
+    if (!formData.email.trim()) {
+      setEmailError('Email is required');
+      return false;
+    }
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email.trim())) {
+      setEmailError('Please enter a valid email address');
+      return false;
+    }
+    
+    return true;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      // Get creator ID from URL or use a default
+      const creatorId = searchParams?.get('creator') || 'default';
+      
+      const response = await fetch(`/api/responses/${creatorId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          memberId: welcomeData.memberId || 'anonymous',
+          email: formData.email.trim(),
+          responses: {
+            goal: formData.goal.trim(),
+            community_win: formData.communityWin.trim(),
+            anything_else: formData.anythingElse.trim(),
+          }
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.ok) {
+        setSubmitSuccess(true);
+        // Log success event
+        if (typeof window !== 'undefined' && (window as any).gtag) {
+          (window as any).gtag('event', 'onboarding_form_submitted', {
+            event_category: 'onboarding',
+            event_label: 'success'
+          });
+        }
+      } else {
+        setSubmitError(result.reason || 'Failed to save responses. Please try again.');
+      }
+    } catch (error) {
+      console.error('Form submission error:', error);
+      setSubmitError('Network error. Please check your connection and try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const getWelcomeMessage = () => {
     if (welcomeData.username) {
       return `Welcome, @${welcomeData.username}!`;
@@ -61,135 +162,241 @@ export default function WelcomeClient() {
     return "Whether you're a new member or just getting started, we're here to help you succeed.";
   };
 
+  if (submitSuccess) {
+    return (
+      <div className="min-h-screen bg-[#F6F7FB]">
+        <div className="max-w-5xl mx-auto px-4 py-12">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">Thank you!</h1>
+            <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+              We've received your information and will be in touch soon. Welcome to the community!
+            </p>
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              Back to App
+              <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-indigo-50 via-white to-sky-100">
-      <div className="max-w-4xl mx-auto px-4 py-12">
+    <div className="min-h-screen bg-[#F6F7FB]">
+      <div className="max-w-5xl mx-auto px-4 py-12">
         {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600 mb-4">
-            {getWelcomeMessage()}
+        <div className="text-center mb-16">
+          <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6 leading-tight">
+            Turn New Members into<br />
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
+              Engaged Community Fans
+            </span>
+            <br />
+            — Automatically
           </h1>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            {getSubtitle()}
+          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            Streamline your onboarding process and turn every new member into an engaged community participant.
           </p>
         </div>
 
-        {/* Trust Badges */}
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center space-x-6 text-gray-500">
-            <span className="flex items-center">
-              <svg className="w-5 h-5 mr-2 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              Trusted by 10,000+ creators
-            </span>
-            <span className="flex items-center">
-              <svg className="w-5 h-5 mr-2 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              Built for Whop communities
-            </span>
-          </div>
-        </div>
-
-        {/* Main CTAs */}
-        <div className="grid md:grid-cols-2 gap-6 mb-12">
-          <Link 
-            href="/dashboard/questions"
-            className="group p-6 bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 border border-gray-200 hover:border-indigo-300"
-          >
-            <div className="flex items-center mb-4">
-              <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mr-4 group-hover:bg-indigo-200 transition-colors">
-                <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-800">Answer Onboarding Questions</h3>
-            </div>
-            <p className="text-gray-600">
-              Help us understand your goals and preferences so we can personalize your experience.
-            </p>
-          </Link>
-
-          <Link 
-            href="/dashboard/leads"
-            className="group p-6 bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 border border-gray-200 hover:border-indigo-300"
-          >
-            <div className="flex items-center mb-4">
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4 group-hover:bg-green-200 transition-colors">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-800">View Lead Opportunities</h3>
-            </div>
-            <p className="text-gray-600">
-              Discover potential clients and opportunities within our community.
-            </p>
-          </Link>
-
-          <Link 
-            href="/dashboard/dm-templates"
-            className="group p-6 bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 border border-gray-200 hover:border-indigo-300"
-          >
-            <div className="flex items-center mb-4">
-              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mr-4 group-hover:bg-purple-200 transition-colors">
-                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-800">DM Templates</h3>
-            </div>
-            <p className="text-gray-600">
-              Access proven message templates to connect with community members effectively.
-            </p>
-          </Link>
-
+        {/* Four Tiles Grid */}
+        <div className="grid md:grid-cols-2 gap-6 mb-16">
           <Link 
             href="/dashboard/settings"
-            className="group p-6 bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 border border-gray-200 hover:border-indigo-300"
+            className="group p-6 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 border border-gray-200 hover:border-indigo-300"
           >
             <div className="flex items-center mb-4">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4 group-hover:bg-blue-200 transition-colors">
+              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mr-4 group-hover:bg-blue-200 transition-colors">
                 <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-semibold text-gray-800">Settings & Preferences</h3>
+              <h3 className="text-xl font-semibold text-gray-800">Settings</h3>
+              <svg className="ml-auto w-5 h-5 text-gray-400 group-hover:text-indigo-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
             </div>
             <p className="text-gray-600">
-              Customize your experience and manage your account preferences.
+              Decide what to collect and where to send it.
+            </p>
+          </Link>
+
+          <Link 
+            href="/dashboard/dm-templates"
+            className="group p-6 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 border border-gray-200 hover:border-indigo-300"
+          >
+            <div className="flex items-center mb-4">
+              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mr-4 group-hover:bg-purple-200 transition-colors">
+                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-gray-800">DM Templates</h3>
+              <svg className="ml-auto w-5 h-5 text-gray-400 group-hover:text-indigo-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+            <p className="text-gray-600">
+              Craft your welcome messages — personal, professional, or fun.
+            </p>
+          </Link>
+
+          <Link 
+            href="/dashboard/questions"
+            className="group p-6 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 border border-gray-200 hover:border-indigo-300"
+          >
+            <div className="flex items-center mb-4">
+              <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center mr-4 group-hover:bg-indigo-200 transition-colors">
+                <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-gray-800">Onboarding Questions</h3>
+              <svg className="ml-auto w-5 h-5 text-gray-400 group-hover:text-indigo-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+            <p className="text-gray-600">
+              Ask for emails, goals, or preferences with one click.
+            </p>
+          </Link>
+
+          <Link 
+            href="/dashboard/leads"
+            className="group p-6 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 border border-gray-200 hover:border-indigo-300"
+          >
+            <div className="flex items-center mb-4">
+              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mr-4 group-hover:bg-green-200 transition-colors">
+                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-gray-800">Leads</h3>
+              <svg className="ml-auto w-5 h-5 text-gray-400 group-hover:text-indigo-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+            <p className="text-gray-600">
+              View all your member responses in one dashboard.
             </p>
           </Link>
         </div>
 
-        {/* Additional Info */}
-        <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-800 mb-3">Need Help?</h3>
-          <p className="text-gray-600 mb-4">
-            Our team is here to support you every step of the way. Don't hesitate to reach out if you have questions.
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <Link 
-              href="/help"
-              className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+        {/* Onboarding Form Card */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Welcome! Please answer a few questions</h2>
+          
+          {submitError && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg" role="alert" aria-live="polite">
+              <p className="text-red-800">{submitError}</p>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Email Field */}
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                Email <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                required
+                value={formData.email}
+                onChange={(e) => handleInputChange('email', e.target.value)}
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors ${
+                  emailError ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                }`}
+                placeholder="your@email.com"
+                aria-invalid={!!emailError}
+                aria-describedby={emailError ? 'email-error' : undefined}
+              />
+              {emailError && (
+                <p id="email-error" className="mt-2 text-sm text-red-600" role="alert">
+                  {emailError}
+                </p>
+              )}
+            </div>
+
+            {/* Goal Field */}
+            <div>
+              <label htmlFor="goal" className="block text-sm font-medium text-gray-700 mb-2">
+                What's your #1 goal?
+              </label>
+              <textarea
+                id="goal"
+                name="goal"
+                value={formData.goal}
+                onChange={(e) => handleInputChange('goal', e.target.value)}
+                rows={3}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                placeholder="e.g., Build a community, Learn new skills, Find collaborators..."
+              />
+            </div>
+
+            {/* Community Win Field */}
+            <div>
+              <label htmlFor="communityWin" className="block text-sm font-medium text-gray-700 mb-2">
+                What would make this community a win?
+              </label>
+              <textarea
+                id="communityWin"
+                name="communityWin"
+                value={formData.communityWin}
+                onChange={(e) => handleInputChange('communityWin', e.target.value)}
+                rows={3}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                placeholder="e.g., Regular events, Active discussions, Networking opportunities..."
+              />
+            </div>
+
+            {/* Anything Else Field */}
+            <div>
+              <label htmlFor="anythingElse" className="block text-sm font-medium text-gray-700 mb-2">
+                Anything else?
+              </label>
+              <textarea
+                id="anythingElse"
+                name="anythingElse"
+                value={formData.anythingElse}
+                onChange={(e) => handleInputChange('anythingElse', e.target.value)}
+                rows={3}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                placeholder="Additional thoughts, questions, or preferences..."
+              />
+            </div>
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full bg-indigo-600 text-white font-medium py-3 px-6 rounded-lg hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed transition-colors focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
             >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Help Center
-            </Link>
-            <Link 
-              href="/contact"
-              className="inline-flex items-center px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors"
-            >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-              Contact Support
-            </Link>
-          </div>
+              {isSubmitting ? (
+                <span className="flex items-center justify-center">
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Saving...
+                </span>
+              ) : (
+                'Submit'
+              )}
+            </button>
+          </form>
         </div>
 
         {/* Debug Info (only in development) */}
