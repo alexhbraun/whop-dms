@@ -4,10 +4,12 @@ import { useRouter } from 'next/navigation';
 import toast, { Toaster } from 'react-hot-toast';
 import LinkWithId from '@/components/LinkWithId';
 
-interface DMTemplateStep {
+interface OnboardingQuestion {
   question_text: string;
-  require_email: boolean;
-  // Add other properties if needed
+  type: string;
+  required: boolean;
+  position: number;
+  options?: any[];
 }
 
 export default function OnboardingPage({ params, searchParams }: { params: { creatorId: string }, searchParams: { memberId: string, t: string } }) {
@@ -19,7 +21,7 @@ export default function OnboardingPage({ params, searchParams }: { params: { cre
   const [loading, setLoading] = useState(true);
   const [inviteValid, setInviteValid] = useState(false);
   const [validationReason, setValidationReason] = useState('');
-  const [questions, setQuestions] = useState<DMTemplateStep[]>([]);
+  const [questions, setQuestions] = useState<OnboardingQuestion[]>([]);
   const [answers, setAnswers] = useState<string[]>([]);
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -57,14 +59,22 @@ export default function OnboardingPage({ params, searchParams }: { params: { cre
 
   const fetchQuestions = async (id: string) => {
     try {
-      const res = await fetch(`/api/dm-templates?community_id=${id}`);
+      const res = await fetch(`/api/questions/${encodeURIComponent(id)}`);
       const data = await res.json();
-      if (data.success && data.data && data.data.length > 0) {
-        // Assuming we take the first template's steps as questions
-        setQuestions(data.data[0].steps);
-        setAnswers(new Array(data.data[0].steps.length).fill(''));
+      if (data.ok && data.questions && data.questions.length > 0) {
+        // Map onboarding questions to the expected format
+        const mappedQuestions = data.questions.map((q: any) => ({
+          question_text: q.text,
+          require_email: q.type === 'email',
+          type: q.type,
+          required: q.required,
+          position: q.position,
+          options: q.options || []
+        }));
+        setQuestions(mappedQuestions);
+        setAnswers(new Array(mappedQuestions.length).fill(''));
       } else {
-        console.warn('No DM templates found for creator:', id);
+        console.warn('No onboarding questions found for creator:', id);
         setQuestions([]);
         setAnswers([]);
       }
@@ -165,7 +175,7 @@ export default function OnboardingPage({ params, searchParams }: { params: { cre
       <p className="text-center text-gray-700">Please answer a few questions to complete your onboarding.</p>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {questions.some(q => q.require_email) && (
+        {questions.some(q => q.type === 'email') && (
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Your Email (required)</label>
             <input
@@ -175,6 +185,7 @@ export default function OnboardingPage({ params, searchParams }: { params: { cre
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Enter your email"
               required
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
             />
           </div>
         )}
@@ -186,17 +197,70 @@ export default function OnboardingPage({ params, searchParams }: { params: { cre
             <div key={index}>
               <label htmlFor={`q${index}`} className="block text-sm font-medium text-gray-700 mb-1">
                 {index + 1}. {q.question_text}
-                {q.require_email && <span className="text-red-500 ml-1">*</span>}
+                {q.required && <span className="text-red-500 ml-1">*</span>}
               </label>
-              <textarea
-                id={`q${index}`}
-                value={answers[index]}
-                onChange={(e) => handleAnswerChange(index, e.target.value)}
-                rows={3}
-                placeholder="Your answer"
-                className="w-full"
-                required={q.require_email} // Assuming required_email implies required answer here
-              />
+              
+              {q.type === 'email' ? (
+                <input
+                  type="email"
+                  id={`q${index}`}
+                  value={answers[index]}
+                  onChange={(e) => handleAnswerChange(index, e.target.value)}
+                  placeholder="Enter your email"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  required={q.required}
+                />
+              ) : q.type === 'single_select' && q.options && q.options.length > 0 ? (
+                <select
+                  id={`q${index}`}
+                  value={answers[index]}
+                  onChange={(e) => handleAnswerChange(index, e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  required={q.required}
+                >
+                  <option value="">Select an option...</option>
+                  {q.options.map((opt: any, optIndex: number) => (
+                    <option key={optIndex} value={opt.value || opt.label}>
+                      {opt.label || opt.value}
+                    </option>
+                  ))}
+                </select>
+              ) : q.type === 'multi_select' && q.options && q.options.length > 0 ? (
+                <div className="space-y-2">
+                  {q.options.map((opt: any, optIndex: number) => (
+                    <label key={optIndex} className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={answers[index]?.includes(opt.value || opt.label) || false}
+                        onChange={(e) => {
+                          const currentAnswers = answers[index] ? answers[index].split(',').filter(Boolean) : [];
+                          if (e.target.checked) {
+                            currentAnswers.push(opt.value || opt.label);
+                          } else {
+                            const indexToRemove = currentAnswers.indexOf(opt.value || opt.label);
+                            if (indexToRemove > -1) {
+                              currentAnswers.splice(indexToRemove, 1);
+                            }
+                          }
+                          handleAnswerChange(index, currentAnswers.join(','));
+                        }}
+                        className="mr-2"
+                      />
+                      {opt.label || opt.value}
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <textarea
+                  id={`q${index}`}
+                  value={answers[index]}
+                  onChange={(e) => handleAnswerChange(index, e.target.value)}
+                  rows={3}
+                  placeholder="Your answer"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  required={q.required}
+                />
+              )}
             </div>
           ))
         )}
