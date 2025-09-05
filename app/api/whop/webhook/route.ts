@@ -73,7 +73,10 @@ export async function POST(req: NextRequest) {
         (process.env.WHOP_API_KEY ?? "").trim().length
       );
       
-      await whopSdk.messages.sendDirectMessageToUser({
+      const agentId = process.env.WHOP_AGENT_USER_ID!;
+      const client = whopSdk.withUser(agentId);
+      
+      await client.messages.sendDirectMessageToUser({
         toUserIdOrUsername: toUser,
         message,
       });
