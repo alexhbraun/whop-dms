@@ -66,6 +66,12 @@ export async function POST(req: NextRequest) {
 
     try {
       console.log(`[WHOP-WEBHOOK] Sending DM to ${toUser} for event ${event.id}`);
+      console.log(
+        "🔑 DM SEND using key:",
+        process.env.WHOP_API_KEY?.slice(0, 6),
+        "… length:",
+        process.env.WHOP_API_KEY?.length
+      );
       
       await whopSdk.messages.sendDirectMessageToUser({
         toUserIdOrUsername: toUser,
