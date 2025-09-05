@@ -40,3 +40,5 @@ export function getSettingsUrl(): string {
 export function getDmTemplatesUrl(): string {
   return '/dashboard/dm-templates';
 }
+
+

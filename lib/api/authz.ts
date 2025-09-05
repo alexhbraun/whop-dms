@@ -37,3 +37,5 @@ export function isAdminRequest(req: Request): boolean {
   const expected = process.env.ADMIN_KEY;
   return !!provided && !!expected && provided === expected;
 }
+
+

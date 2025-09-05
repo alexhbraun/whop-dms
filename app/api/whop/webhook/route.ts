@@ -1,94 +1,161 @@
-import { NextResponse } from 'next/server';
-// import { createClient } from '@supabase/supabase-js'; // Not needed for server-side webhook, using supabaseAdmin
-import Mustache from 'mustache'; // For template rendering
+import { NextRequest, NextResponse } from "next/server";
+import { whopSdk } from "@/lib/whop-sdk";
+import { createClient } from "@supabase/supabase-js";
+import { getBaseUrl } from "@/lib/urls";
 
-import { getServerSupabase } from '../../../../lib/supabaseServer'; // Adjust path as needed
+const DM_ENABLED = process.env.DM_ONBOARDING_ENABLED === "true";
 
-const APP_BASE_URL = process.env.APP_BASE_URL;
-const MAGIC_LINK_SECRET = process.env.MAGIC_LINK_SECRET;
+function getSupabaseClient() {
+  return createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
-// Placeholder for DM Template (can fetch from DB later)
-const DEFAULT_DM_TEMPLATE = {
-  name: "Welcome Onboarding DM",
-  subject: "Welcome to {{community_name}}! Complete your onboarding.",
-  body: "Hello {{member_name}},\n\nWelcome to the {{community_name}} community! To help you get started, please complete your onboarding by clicking this link:\n\n{{onboarding_link}}\n\nLooking forward to having you!\n",
+type MemberCreated = {
+  id: string;
+  type: "member.created";
+  data: {
+    business_id: string;
+    experience_id?: string;
+    member_id: string;
+    user?: { id?: string; username?: string };
+  };
 };
 
-export async function POST(req: Request) {
-  const payload = await req.json();
+export async function POST(req: NextRequest) {
+  try {
+    const event = (await req.json()) as MemberCreated;
+    
+    console.log(`[WHOP-WEBHOOK] Received event: ${event.type} (${event.id})`);
 
-  // Whop webhook authentication (simplified for now, implement actual signature verification)
-  // const whopSignature = req.headers.get('whop-signature');
-  // if (!verifyWhopSignature(payload, whopSignature)) {
-  //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  // }
+    // Idempotency check
+    const supabase = getSupabaseClient();
+    const { data: existing } = await supabase
+      .from("dm_send_log")
+      .select("id")
+      .eq("event_id", event.id)
+      .maybeSingle();
 
-  console.log('[WHOP_WEBHOOK] Received webhook payload:', payload);
-
-  if (payload.type === 'member.created' || payload.type === 'member.joined') {
-    const creatorId = payload.data.community_id || payload.data.business_id;
-    const memberId = payload.data.id;
-    const memberName = payload.data.name || 'New Member';
-    const communityName = payload.data.community_name || 'Our Community';
-
-    if (!creatorId || !memberId) {
-      console.error('[WHOP_WEBHOOK] Missing creator_id or member_id in payload.', payload.data);
-      return NextResponse.json({ error: 'Missing creator_id or member_id' }, { status: 400 });
+    if (existing) {
+      console.log(`[WHOP-WEBHOOK] Event ${event.id} already processed, skipping`);
+      return NextResponse.json({ ok: true, note: "already processed" });
     }
 
-    if (!APP_BASE_URL) {
-      console.error('[WHOP_WEBHOOK] APP_BASE_URL environment variable is not set.');
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+    const { business_id, experience_id, member_id } = event.data;
+
+    // Resolve user id/username
+    let toUser: string | null =
+      event.data.user?.id ??
+      event.data.user?.username ??
+      (await lookupCachedUser(business_id, member_id)) ??
+      (experience_id ? await lookupViaExperience(experience_id, member_id) : null);
+
+    const message = buildWelcomeDm({ business_id, member_id });
+
+    if (!DM_ENABLED) {
+      await log(event.id, business_id, String(toUser ?? member_id), "deferred", message, "DM disabled");
+      console.log(`[WHOP-WEBHOOK] DM disabled by flag for event ${event.id}`);
+      return NextResponse.json({ ok: true, note: "DM disabled by flag" });
     }
-    if (!MAGIC_LINK_SECRET) {
-      console.error('[WHOP_WEBHOOK] MAGIC_LINK_SECRET environment variable is not set.');
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+
+    if (!toUser) {
+      await log(event.id, business_id, member_id, "deferred", message, "user unresolved");
+      console.log(`[WHOP-WEBHOOK] User unresolved for event ${event.id}, deferring`);
+      return NextResponse.json({ ok: true, note: "user unresolved; deferred" }, { status: 202 });
     }
 
     try {
-      const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
-      const supabase = getServerSupabase();
-      const { data: insertData, error: insertError } = await supabase
-        .from('onboarding_invites')
-        .insert({
-          creator_id: creatorId,
-          member_id: memberId,
-          token: token,
-          expires_at: expiresAt,
-        })
-        .select();
-
-      if (insertError) {
-        console.error('[WHOP_WEBHOOK] Error inserting onboarding invite:', insertError);
-        return NextResponse.json({ error: 'Failed to create invite' }, { status: 500 });
-      }
-
-      console.log('[WHOP_WEBHOOK] Onboarding invite created:', insertData);
-
-      const onboardingLink = `${APP_BASE_URL}/onboarding/${creatorId}?memberId=${memberId}&t=${token}`;
-
-      let dmTemplate = DEFAULT_DM_TEMPLATE;
-
-      const view = {
-        member_name: memberName,
-        community_name: communityName,
-        onboarding_link: onboardingLink,
-      };
-      const dmSubject = Mustache.render(dmTemplate.subject, view);
-      const dmBody = Mustache.render(dmTemplate.body, view);
-
-      console.log(`[WHOP_WEBHOOK][DM to ${memberName}] Subject: ${dmSubject}`);
-      console.log(`[WHOP_WEBHOOK][DM to ${memberName}] Body: ${dmBody}`);
-      console.log(`[WHOP_WEBHOOK][DM to ${memberName}] Magic Link: ${onboardingLink}`);
-
-      return NextResponse.json({ success: true, message: 'Webhook processed, invite issued, DM logged.' });
-    } catch (error) {
-      console.error('[WHOP_WEBHOOK] Unexpected error processing webhook:', error);
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+      console.log(`[WHOP-WEBHOOK] Sending DM to ${toUser} for event ${event.id}`);
+      
+      await whopSdk.messages.sendDirectMessageToUser({
+        toUserIdOrUsername: toUser,
+        message,
+      });
+      
+      await cacheUser(business_id, member_id, toUser);
+      await log(event.id, business_id, toUser, "success", message);
+      
+      console.log(`[WHOP-WEBHOOK] DM sent successfully for event ${event.id}`);
+      return NextResponse.json({ ok: true });
+    } catch (e: any) {
+      const errorMsg = e?.message ?? "send error";
+      await log(event.id, business_id, toUser, "failed", message, errorMsg);
+      console.error(`[WHOP-WEBHOOK] DM send failed for event ${event.id}:`, errorMsg);
+      
+      // Still return 200 so webhook doesn't retry forever
+      return NextResponse.json({ ok: true, error: "send failed" });
     }
+  } catch (error) {
+    console.error("[WHOP-WEBHOOK] Unexpected error:", error);
+    return NextResponse.json({ ok: false, error: "internal error" }, { status: 500 });
   }
+}
 
-  return NextResponse.json({ success: true, message: 'Webhook received, no action taken for this event type.' });
+function buildWelcomeDm({ business_id, member_id }: { business_id: string; member_id: string }) {
+  const baseUrl = getBaseUrl();
+  const onboardingUrl = `${baseUrl}/onboarding/${business_id}?member=${member_id}`;
+  
+  return `🎉 Welcome to the community! Complete your onboarding here: ${onboardingUrl}`;
+}
+
+async function lookupCachedUser(business_id: string, member_id: string) {
+  const supabase = getSupabaseClient();
+  const { data } = await supabase
+    .from("user_identity_map")
+    .select("user_id, username")
+    .eq("business_id", business_id)
+    .eq("member_id", member_id)
+    .maybeSingle();
+  
+  return data?.user_id ?? data?.username ?? null;
+}
+
+async function cacheUser(business_id: string, member_id: string, toUser: string) {
+  const supabase = getSupabaseClient();
+  const patch = toUser.startsWith("user_")
+    ? { user_id: toUser, username: null }
+    : { user_id: null, username: toUser };
+
+  await supabase
+    .from("user_identity_map")
+    .upsert(
+      { business_id, member_id, ...patch },
+      { onConflict: "business_id,member_id" }
+    );
+}
+
+async function lookupViaExperience(experience_id: string, member_id: string) {
+  try {
+    const result = await whopSdk.experiences.listUsersForExperience({
+      experienceId: experience_id,
+      searchQuery: member_id, // heuristic: try member_id
+      first: 5,
+    });
+    
+    const node = result?.users?.nodes?.[0];
+    return node?.id ?? node?.username ?? null;
+  } catch (error) {
+    console.warn(`[WHOP-WEBHOOK] Failed to lookup user via experience ${experience_id}:`, error);
+    return null;
+  }
+}
+
+async function log(
+  event_id: string,
+  business_id: string,
+  to_user: string,
+  status: string,
+  message_preview?: string,
+  error?: string
+) {
+  const supabase = getSupabaseClient();
+  await supabase.from("dm_send_log").insert({
+    event_id,
+    business_id,
+    to_user,
+    status,
+    message_preview: message_preview?.slice(0, 240),
+    error,
+  });
 }
