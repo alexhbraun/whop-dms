@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 // app/api/debug/whop/route.ts
 import { whopSdk } from "@/lib/whop-sdk";
 

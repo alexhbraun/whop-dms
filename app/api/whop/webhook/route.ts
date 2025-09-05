@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import { whopSdk } from "@/lib/whop-sdk";
 import { createClient } from "@supabase/supabase-js";
@@ -67,10 +69,8 @@ export async function POST(req: NextRequest) {
     try {
       console.log(`[WHOP-WEBHOOK] Sending DM to ${toUser} for event ${event.id}`);
       console.log(
-        "🔑 DM SEND using key:",
-        process.env.WHOP_API_KEY?.slice(0, 6),
-        "… length:",
-        process.env.WHOP_API_KEY?.length
+        "DM about to send. runtime=node, sdk=@whop/api, keyLen:",
+        (process.env.WHOP_API_KEY ?? "").trim().length
       );
       
       await whopSdk.messages.sendDirectMessageToUser({
