@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { whopSdk } from "@/lib/whop-sdk";
 import { createClient } from "@supabase/supabase-js";
 import { getBaseUrl } from "@/lib/urls";
-
-const DM_ENABLED = process.env.DM_ONBOARDING_ENABLED === "true";
+import { DM_ENABLED } from "@/lib/feature-flags";
 
 function getSupabaseClient() {
   return createClient(
@@ -135,7 +134,7 @@ async function lookupViaExperience(experience_id: string, member_id: string) {
     
     const node = result?.users?.nodes?.[0];
     return node?.id ?? node?.username ?? null;
-  } catch (error) {
+    } catch (error) {
     console.warn(`[WHOP-WEBHOOK] Failed to lookup user via experience ${experience_id}:`, error);
     return null;
   }

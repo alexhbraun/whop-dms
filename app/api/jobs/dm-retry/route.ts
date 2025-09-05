@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { whopSdk } from "@/lib/whop-sdk";
 import { getBaseUrl } from "@/lib/urls";
-
-const DM_ENABLED = process.env.DM_ONBOARDING_ENABLED === "true";
+import { DM_ENABLED } from "@/lib/feature-flags";
 
 function getSupabaseClient() {
   return createClient(
