@@ -1,48 +1,85 @@
 export const runtime = "nodejs";
 
+import { NextResponse } from "next/server";
+import { whopSdk } from "@/lib/whop-sdk";
+import { createClient } from "@supabase/supabase-js";
+
+function getSupabaseClient() {
+  return createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
 export async function POST(req: Request) {
+  const eventId = `debug_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
   try {
     const { toUserIdOrUsername, message } = await req.json();
+
     if (!toUserIdOrUsername || !message) {
-      return new Response(JSON.stringify({ ok: false, error: "Missing toUserIdOrUsername or message" }), { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Missing toUserIdOrUsername or message" },
+        { status: 400 }
+      );
     }
 
-    const APP_API_KEY =
-      (process.env.WHOP_API_KEY ?? process.env.WHOP_APP_API_KEY ?? "").trim();
-    if (!APP_API_KEY) {
-      return new Response(JSON.stringify({ ok: false, error: "Missing WHOP_API_KEY" }), { status: 500 });
+    // Log to Supabase for traceability
+    const supabase = getSupabaseClient();
+    
+    try {
+      await supabase.from("dm_send_log").insert({
+        event_id: eventId,
+        business_id: "debug_test",
+        to_user: toUserIdOrUsername,
+        status: "attempting",
+        message_preview: message.slice(0, 240),
+        error: null,
+      });
+    } catch (logError) {
+      console.warn("Failed to log to Supabase:", logError);
     }
 
-    // Replace URL with the official Whop REST DM endpoint if your docs specify a different path.
-    // The important bit is the header style: Authorization: App <APP_API_KEY>.
-    const url = "https://api.whop.com/v1/messages/send-direct-message-to-user";
-
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // App key style auth
-        Authorization: `App ${APP_API_KEY}`,
-      },
-      body: JSON.stringify({
-        toUserIdOrUsername,
-        message,
-      }),
+    // Attempt DM send using SDK
+    const result = await whopSdk.messages.sendDirectMessageToUser({
+      toUserIdOrUsername,
+      message,
     });
 
-    const text = await resp.text();
-    const json = (() => { try { return JSON.parse(text); } catch { return { raw: text }; } })();
+    // Update log with success
+    try {
+      await supabase
+        .from("dm_send_log")
+        .update({ 
+          status: "success",
+          error: null
+        })
+        .eq("event_id", eventId);
+    } catch (logError) {
+      console.warn("Failed to update log with success:", logError);
+    }
 
-    return new Response(JSON.stringify({
-      ok: resp.ok,
-      status: resp.status,
-      body: json,
-    }), { headers: { "Content-Type": "application/json" }, status: resp.ok ? 200 : 500 });
+    return NextResponse.json({ ok: true, result });
+  } catch (err: any) {
+    console.error("DM send error:", err);
+    
+    // Update log with error
+    try {
+      const supabase = getSupabaseClient();
+      await supabase
+        .from("dm_send_log")
+        .update({ 
+          status: "failed",
+          error: err.message || "Unknown error"
+        })
+        .eq("event_id", eventId);
+    } catch (logError) {
+      console.warn("Failed to update log with error:", logError);
+    }
 
-  } catch (e: any) {
-    return new Response(JSON.stringify({ ok: false, error: e?.message ?? String(e) }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" }
-    });
+    return NextResponse.json(
+      { ok: false, error: err.message || "Unknown error" },
+      { status: 500 }
+    );
   }
 }
