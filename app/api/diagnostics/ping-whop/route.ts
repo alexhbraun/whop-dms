@@ -1,9 +1,11 @@
 // app/api/diagnostics/ping-whop/route.ts
 import { NextResponse } from 'next/server';
+import { requireAdminSecret } from "@/lib/admin-auth";
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(req: Request) {
+  requireAdminSecret(req);
   console.log('[ping-whop.GET] Endpoint accessed');
   
   const hasKey = !!process.env.WHOP_API_KEY;

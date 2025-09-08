@@ -1,4 +1,5 @@
 // app/api/debug/env/route.ts
+export const runtime = "nodejs";
 import { requireAdminSecret } from "@/lib/admin-auth";
 
 export async function GET(req: Request) {

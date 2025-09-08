@@ -1,10 +1,12 @@
 // app/api/diagnostics/graphql-introspect/route.ts
 import { NextResponse } from "next/server";
 import { postGraphQL } from "@/lib/whopGraph";
+import { requireAdminSecret } from "@/lib/admin-auth";
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(req: Request) {
+  requireAdminSecret(req);
   console.log("[introspect] start");
   
   try {

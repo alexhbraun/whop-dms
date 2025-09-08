@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerSupabase } from '@/lib/supabaseServer';
+import { requireAdminSecret } from "@/lib/admin-auth";
 
 const REQUIRED_ENVS = [
   'NEXT_PUBLIC_SUPABASE_URL',
@@ -12,6 +13,7 @@ function ok(v: any) { return { ok: true, ...v }; }
 function fail(msg: string, extra: any = {}) { return { ok: false, error: msg, ...extra }; }
 
 export async function GET(req: Request) {
+  requireAdminSecret(req);
   const url = new URL(req.url);
   const communityId = url.searchParams.get('community_id') || '';
   const host = url.searchParams.get('host') || ''; // optional override for testing
