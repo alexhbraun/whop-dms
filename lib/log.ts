@@ -2,6 +2,7 @@
 // Safe logging utility for development and production
 
 import { shouldLogToConsole } from './flags';
+import * as Sentry from "@sentry/nextjs";
 
 export const log = {
   info: (tag: string, data: unknown) => { 
@@ -17,6 +18,9 @@ export const log = {
         console.error(`[${tag}]`, safe(data)); 
       } catch {} 
     }
+    try { 
+      Sentry.captureMessage(tag, { level: "error", extra: safe(data) }); 
+    } catch {} 
   },
   warn: (tag: string, data: unknown) => { 
     if (shouldLogToConsole()) {
@@ -64,6 +68,22 @@ function sanitizeData(obj: any): any {
   }
   
   return sanitized;
+}
+
+// Additional structured logging functions for Sentry integration
+export function logInfo(msg: string, meta?: any) { 
+  console.log("[info]", msg, meta ?? ""); 
+}
+
+export function logWarn(msg: string, meta?: any) { 
+  console.warn("[warn]", msg, meta ?? ""); 
+}
+
+export function logError(msg: string, meta?: any) {
+  console.error("[error]", msg, meta ?? "");
+  try { 
+    Sentry.captureMessage(msg, { level: "error", extra: meta }); 
+  } catch {} 
 }
 
 

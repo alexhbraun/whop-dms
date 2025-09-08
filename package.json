@@ -17,6 +17,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@heroicons/react": "^2.2.0",
+    "@sentry/nextjs": "^10.10.0",
     "@supabase/supabase-js": "^2.43.4",
     "@whop/api": "^0.0.46",
     "clsx": "^2.1.1",

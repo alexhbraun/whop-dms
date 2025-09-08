@@ -4,6 +4,8 @@ import useCreatorId from '@/components/useCreatorId';
 import Link from 'next/link';
 import Button from '@/components/ui/Button';
 import PageHeader from '@/components/PageHeader';
+import TestWebhook from '../../dashboard/components/TestWebhook';
+import { ensureDefaultSeedForBusiness } from '@/lib/seed';
 
 export default function SettingsPage({ searchParams }: { searchParams?: any }) {
   const { creatorId, unresolved } = useCreatorId(searchParams);
@@ -21,6 +23,9 @@ export default function SettingsPage({ searchParams }: { searchParams?: any }) {
     setError(null);
     setWebhookUrlError(null); // Clear webhook error on load
     try {
+      // Ensure default seed data for this business
+      await ensureDefaultSeedForBusiness(creatorId);
+      
       const r = await fetch(`/api/settings/${encodeURIComponent(creatorId)}`, { cache: 'no-store' });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.ok === false) throw new Error(j.error || `Load failed (${r.status})`);
@@ -132,6 +137,17 @@ export default function SettingsPage({ searchParams }: { searchParams?: any }) {
         <p className="mt-3 text-sm text-amber-600">
           Finish setup on Home to connect this app to your Whop Business.
         </p>
+      )}
+
+      {/* Test Webhook Section */}
+      {creatorId && !unresolved && (
+        <div className="nexo-card mt-6">
+          <h3 className="text-lg font-semibold text-brand-charcoal mb-4">Test Webhook</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Send a test webhook to verify your DM pipeline is working correctly.
+          </p>
+          <TestWebhook businessId={creatorId} username="test_user" />
+        </div>
       )}
     </div>
   );

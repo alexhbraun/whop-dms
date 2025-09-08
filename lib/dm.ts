@@ -1,6 +1,7 @@
 import { whopSdk } from "@/lib/whop-sdk";
 import { getTemplateForBusiness } from "@/lib/db/templates";
 import { createClient } from "@supabase/supabase-js";
+import { logInfo, logError } from "@/lib/log";
 
 function getSupabaseClient() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
@@ -40,6 +41,8 @@ export async function sendWelcomeDM(params: SendParams) {
   let error: string | null = null;
   let templateId: string | null = tmpl?.id ?? null;
 
+  logInfo("dm.send.attempt", { businessId, toUser: recipient, templateId, eventId });
+
   try {
     let client: any = whopSdk.withUser(AGENT);
     if (BIZ && typeof client.withCompany === "function") {
@@ -50,9 +53,12 @@ export async function sendWelcomeDM(params: SendParams) {
       toUserIdOrUsername: recipient,
       message
     });
+    
+    logInfo("dm.send.ok", { businessId, toUser: recipient, templateId, eventId });
   } catch (e: any) {
     status = "failed";
     error = e?.message ?? String(e);
+    logError("dm.send.fail", { businessId, toUser: recipient, templateId, eventId, error: e?.message });
   }
 
   // Log with richer context
