@@ -33,7 +33,7 @@ Turn new members into engaged community fans — automatically.
 
 **Important**: Update your Whop app settings to use Nexo branding:
 
-1. **App Icon**: Upload `/public/brand/nexo-logo.svg` as your app icon
+1. **App Icon**: Use the official Nexo logo: [https://ik.imagekit.io/rgqefde41/nexo%20logo.png](https://ik.imagekit.io/rgqefde41/nexo%20logo.png)
 2. **Store Screenshots**: Update screenshots to show Nexo branding
 3. **App Name**: Change to "Nexo — Welcome DMs"
 4. **Description**: Use "Turn new members into engaged community fans — automatically."

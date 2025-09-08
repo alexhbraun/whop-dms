@@ -4,7 +4,7 @@ export default function PageHeader({ title, subtitle }: { title: string; subtitl
   return (
     <div className="mb-6 flex items-center gap-4">
       <Image 
-        src="/brand/nexo-logo.svg" 
+        src="https://ik.imagekit.io/rgqefde41/nexo%20logo.png" 
         alt="Nexo" 
         width={36} 
         height={36} 

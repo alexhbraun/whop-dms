@@ -11,9 +11,9 @@ export const metadata = {
   openGraph: {
     title: "Nexo — Welcome DMs",
     description: "Automated onboarding DMs with questions and leads.",
-    images: ["/brand/og-nexo.svg"],
+    images: ["https://ik.imagekit.io/rgqefde41/nexo%20logo.png"],
   },
-  twitter: { card: "summary_large_image", images: ["/brand/og-nexo.svg"] },
+  twitter: { card: "summary_large_image", images: ["https://ik.imagekit.io/rgqefde41/nexo%20logo.png"] },
 };
 
 export default function RootLayout({ children }) {
