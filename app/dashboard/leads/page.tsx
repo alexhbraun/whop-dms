@@ -4,6 +4,8 @@ import useCreatorId from '@/components/useCreatorId';
 import LinkWithId from '@/components/LinkWithId';
 import { useSearchParams } from 'next/navigation'; // Import useSearchParams
 import { useState } from 'react';
+import Button from '@/components/ui/Button';
+import PageHeader from '@/components/PageHeader';
 
 function LeadsPageContent() {
   const searchParams = useSearchParams();
@@ -48,40 +50,38 @@ function LeadsPageContent() {
 
   return (
     <div className="container flex-grow py-8 px-6">
-      <header className="text-center mb-12">
-        <h1 className="text-5xl md:text-6xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">Leads</h1>
-        <p className="text-xl md:text-2xl text-gray-600 max-w-2xl mx-auto mb-6">View and export member responses.</p>
-        {process.env.NODE_ENV !== 'production' && (
-          <div className="text-lg text-gray-500">
-            Installed for: <span className="font-medium text-gray-800">{creatorId || '—'}</span>
-            {host && <span className="text-gray-400 ml-2">· host: {host}</span>}
-            {source && <span className="text-gray-400 ml-2">· source: {source}</span>}
-          </div>
-        )}
-      </header>
+      <PageHeader title="Leads" subtitle="View and export member responses" />
+      
+      {process.env.NODE_ENV !== 'production' && (
+        <div className="text-lg text-gray-500 text-center mb-6">
+          Installed for: <span className="font-medium text-gray-800">{creatorId || '—'}</span>
+          {host && <span className="text-gray-400 ml-2">· host: {host}</span>}
+          {source && <span className="text-gray-400 ml-2">· source: {source}</span>}
+        </div>
+      )}
 
       {shouldShowBindCard && (
-        <div className="bg-purple-50 border border-purple-200 p-6 rounded-lg text-purple-800 text-sm max-w-lg mx-auto mb-8 shadow-sm">
-          <h3 className="text-xl font-semibold mb-3">Bind this Installation</h3>
-          <p className="mb-4">It looks like your community ID isn't automatically detected. Please enter your Whop Business ID below to bind this installation to your host. <span className="text-purple-600 text-xs mt-1">You only need to do this once per community.</span></p>
+        <div className="nexo-card max-w-lg mx-auto mb-8">
+          <h3 className="text-xl font-semibold mb-3 text-brand-charcoal">Bind this Installation</h3>
+          <p className="mb-4 text-gray-600">It looks like your community ID isn't automatically detected. Please enter your Whop Business ID below to bind this installation to your host. <span className="text-brand-coral text-xs mt-1">You only need to do this once per community.</span></p>
           <div className="flex flex-col sm:flex-row gap-3 mb-4">
             <input
               type="text"
               value={bindBusinessId}
               onChange={(e) => setBindBusinessId(e.target.value)}
               placeholder="Enter Whop Business ID (e.g., biz_abc123)"
-              className="flex-grow px-4 py-2 rounded-lg bg-white border border-purple-300 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent transition-colors"
+              className="flex-grow px-4 py-2 rounded-lg bg-white border border-gray-300 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-orange/40 focus:border-brand-orange transition-colors"
             />
-            <button
+            <Button
               onClick={handleBind}
               disabled={isBinding || !bindBusinessId || !host}
-              className="px-6 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="brand"
             >
               {isBinding ? 'Binding…' : 'Bind'}
-            </button>
+            </Button>
           </div>
           {bindError && <p className="text-red-600 text-xs mt-2">Error: {bindError}</p>}
-          <p className="text-purple-600 text-xs mt-4">Your current host: <span className="font-medium">{host || 'N/A'}</span></p>
+          <p className="text-brand-coral text-xs mt-4">Your current host: <span className="font-medium">{host || 'N/A'}</span></p>
         </div>
       )}
 
@@ -91,14 +91,34 @@ function LeadsPageContent() {
         </div>
       )}
 
-      <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-200 space-y-4">
-        <h2 className="text-2xl font-semibold text-gray-800">Onboarding Responses</h2>
+      <div className="nexo-card space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-semibold text-brand-charcoal">Onboarding Responses</h2>
+          <Button variant="secondary" disabled>
+            Export CSV
+          </Button>
+        </div>
         {creatorId ? (
-          <p className="text-gray-600">Showing responses for <b className="text-gray-800">{creatorId}</b>. (Wire up table here.)</p>
+          <div className="space-y-4">
+            <p className="text-gray-600">Showing responses for <b className="text-brand-charcoal">{creatorId}</b>. (Wire up table here.)</p>
+            <div className="bg-brand-gray rounded-lg p-4">
+              <div className="text-sm text-gray-500 mb-2">Sample lead data (placeholder)</div>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center py-2 border-b border-gray-200">
+                  <span className="text-sm text-brand-charcoal">john@example.com</span>
+                  <span className="text-xs text-gray-500">2024-01-08</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-gray-200">
+                  <span className="text-sm text-brand-charcoal">jane@example.com</span>
+                  <span className="text-xs text-gray-500">2024-01-07</span>
+                </div>
+              </div>
+            </div>
+          </div>
         ) : (
           <p className="text-amber-600">Missing community ID to load leads.</p>
         )}
-        <LinkWithId baseHref="/app" creatorId={creatorId} className="text-sm underline text-gray-600 hover:text-gray-800">← Back to App</LinkWithId>
+        <LinkWithId baseHref="/app" creatorId={creatorId} className="text-sm text-brand-red hover:underline">← Back to App</LinkWithId>
       </div>
     </div>
   );

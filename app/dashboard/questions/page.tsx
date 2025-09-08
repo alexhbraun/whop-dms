@@ -6,6 +6,8 @@ import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import InfoCardQuestions from '@/components/InfoCardQuestions';
+import Button from '@/components/ui/Button';
+import PageHeader from '@/components/PageHeader';
 
 type UIOption = { value: string; label?: string };
 type UIQuestion = {
@@ -59,7 +61,7 @@ function QuestionItem({
   const showOptions = question.type === 'single_select' || question.type === 'multi_select';
 
   return (
-    <div ref={setNodeRef} style={style} className="bg-white border border-gray-200 rounded-lg p-4 space-y-4">
+    <div ref={setNodeRef} style={style} className="nexo-card space-y-4">
       <div className="flex items-start gap-3">
         <button
           {...attributes}
@@ -101,8 +103,11 @@ function QuestionItem({
                   type="checkbox"
                   checked={question.required}
                   onChange={(e) => onUpdate({ required: e.target.checked })}
+                  className="rounded border-brand-orange text-brand-orange focus:ring-brand-orange/40"
                 />
-                Required
+                <span className={question.required ? "text-brand-coral font-medium" : "text-gray-600"}>
+                  Required
+                </span>
               </label>
             </div>
           </div>
@@ -282,6 +287,8 @@ export default function QuestionsPage({ searchParams }: { searchParams?: any }) 
   return (
     <div className="max-w-4xl mx-auto space-y-4">
       <DebugCommunityBadge id={creatorId} />
+      
+      <PageHeader title="Onboarding Questions" subtitle="Ask for emails, goals, or preferences with one click" />
       
       <InfoCardQuestions />
 
