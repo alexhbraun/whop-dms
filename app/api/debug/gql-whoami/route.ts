@@ -18,7 +18,6 @@ export async function GET() {
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${apiKey}`,
-      "x-on-behalf-of": agent,
       "x-company-id": biz,
     },
     body: JSON.stringify({ query: "query { currentUser { id username } }" }),

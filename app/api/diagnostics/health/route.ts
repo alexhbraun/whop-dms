@@ -14,8 +14,8 @@ export async function GET(req: Request) {
   try {
     const env = {
       WHOP_API_KEY: process.env.WHOP_API_KEY ? 'present' : 'missing',
-      AGENT: process.env.NEXT_PUBLIC_WHOP_AGENT_USER_ID ? 'present' : 'missing',
-      COMPANY: process.env.NEXT_PUBLIC_WHOP_COMPANY_ID ? 'present' : 'missing',
+      AGENT: process.env.WHOP_AGENT_USER_ID ? 'present' : 'missing',
+      COMPANY: process.env.WHOP_COMPANY_ID ? 'present' : 'missing',
       DM_ENABLED: process.env.DM_ENABLED || 'false',
       DM_MODE: process.env.DM_MODE || 'none',
       NODE_ENV: process.env.NODE_ENV || 'not set',

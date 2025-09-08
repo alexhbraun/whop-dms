@@ -1,7 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { whopSdk } from "@/lib/whop-sdk";
+import { getWhopSdk } from "@/lib/whop-sdk";
 import { sendWelcomeDM } from "@/lib/dm";
 import { createClient } from "@supabase/supabase-js";
 import { getBaseUrl } from "@/lib/urls";
@@ -129,7 +129,8 @@ async function cacheUser(business_id: string, member_id: string, toUser: string)
 
 async function lookupViaExperience(experience_id: string, member_id: string) {
   try {
-    const result = await whopSdk.experiences.listUsersForExperience({
+    const whop = getWhopSdk();
+    const result = await whop.experiences.listUsersForExperience({
       experienceId: experience_id,
       searchQuery: member_id, // heuristic: try member_id
       first: 5,

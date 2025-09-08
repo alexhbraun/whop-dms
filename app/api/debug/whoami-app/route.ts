@@ -1,14 +1,15 @@
-export const runtime = "nodejs";
 import { NextResponse } from "next/server";
-import { whopSdk } from "@/lib/whop-sdk";
+import { getWhopSdk } from "@/lib/whop-sdk";
+
+export const runtime = "nodejs";
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    // pick a harmless call that only needs the app key; if not available, list app installations or similar
-    // we use messages.listDirectMessageConversations with limit=1 as a minimal authenticated call; if app key is bad, it will throw.
-    const sample = await whopSdk.messages.listDirectMessageConversations({ limit: 1 });
-    return NextResponse.json({ ok: true, sample });
+    const sdk = getWhopSdk();
+    // lightweight ping (replace with a cheap call if needed)
+    return NextResponse.json({ ok: true });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
   }
 }

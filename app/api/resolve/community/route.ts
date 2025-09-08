@@ -25,10 +25,6 @@ export async function GET(req: Request) {
   }
 
   // TODO: Optionally call Whop API here to get business_id from slug and upsert cache.
-  // For now: fall back to env default if present.
-  const fallback = process.env.NEXT_PUBLIC_WHOP_COMPANY_ID || null;
-  if (fallback) {
-    return NextResponse.json({ ok: true, business_id: fallback, source: 'env_fallback' });
-  }
+  // No fallback - require proper resolution
   return NextResponse.json({ ok: false, error: 'not_resolved' }, { status: 404 });
 }

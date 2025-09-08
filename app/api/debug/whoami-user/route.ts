@@ -1,15 +1,16 @@
-export const runtime = "nodejs";
 import { NextResponse } from "next/server";
-import { whopSdk } from "@/lib/whop-sdk";
+import { getWhopSdk, getAgentAndCompany } from "@/lib/whop-sdk";
+
+export const runtime = "nodejs";
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const agentId = (process.env.WHOP_AGENT_USER_ID ?? process.env.NEXT_PUBLIC_WHOP_AGENT_USER_ID ?? "").trim();
-    if (!agentId) return NextResponse.json({ ok: false, error: "Missing WHOP_AGENT_USER_ID (or NEXT_PUBLIC_WHOP_AGENT_USER_ID)" }, { status: 500 });
-
-    const client = whopSdk.withUser(agentId);
+    const { agentUserId } = getAgentAndCompany();
+    const whop = getWhopSdk();
+    
     // Simple user read as the agent itself
-    const me = await client.users.getUser({ userId: agentId });
+    const me = await whop.users.getUser({ userId: agentUserId });
     return NextResponse.json({ ok: true, me });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message ?? String(e) }, { status: 500 });

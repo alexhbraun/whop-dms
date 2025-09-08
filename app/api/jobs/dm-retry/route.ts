@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { whopSdk } from "@/lib/whop-sdk";
+import { getWhopSdk } from "@/lib/whop-sdk";
 import { getBaseUrl } from "@/lib/urls";
 import { DM_ENABLED } from "@/lib/feature-flags";
 
@@ -56,7 +56,8 @@ export async function GET() {
           member_id: row.to_user 
         });
 
-        await whopSdk.messages.sendDirectMessageToUser({
+        const whop = getWhopSdk();
+        await whop.messages.sendDirectMessageToUser({
           toUserIdOrUsername: toUser,
           message,
         });
@@ -134,7 +135,8 @@ async function resolveUserForRetry(business_id: string, to_user: string) {
 
     if (experiences && experiences.length > 0) {
       const experience_id = experiences[0].experience_id;
-      const result = await whopSdk.experiences.listUsersForExperience({
+      const whop = getWhopSdk();
+      const result = await whop.experiences.listUsersForExperience({
         experienceId: experience_id,
         searchQuery: to_user,
         first: 3,

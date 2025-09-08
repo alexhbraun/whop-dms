@@ -1,11 +1,14 @@
+import { getWhopSdk } from "@/lib/whop-sdk";
+
 export const runtime = "nodejs";
-import { whopSdk } from "@/lib/whop-sdk";
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
     // Make a tiny authenticated call that requires the App key.
     // We'll try listing DM conversations with a tiny limit.
-    const res = await whopSdk.messages.listDirectMessageConversations({
+    const whop = getWhopSdk();
+    const res = await whop.messages.listDirectMessageConversations({
       limit: 1,
     });
     return new Response(JSON.stringify({ ok: true, sample: res ?? null }), {

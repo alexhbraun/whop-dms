@@ -4,7 +4,6 @@ export async function GET(req: Request) {
   // allow overriding via ?agent= to test a clean value without redeploy
   const src = (url.searchParams.get("agent")
     ?? process.env.WHOP_AGENT_USER_ID
-    ?? process.env.NEXT_PUBLIC_WHOP_AGENT_USER_ID
     ?? "").toString();
 
   const codes = Array.from(src).map(ch => ch.charCodeAt(0));

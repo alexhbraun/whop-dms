@@ -12,7 +12,7 @@ export type WhopConfig = {
 export const whopConfig: WhopConfig = {
   APP_BASE_URL: process.env.APP_BASE_URL || process.env.NEXTAUTH_URL || '',
   WHOP_API_BASE: process.env.WHOP_API_BASE || 'https://whop.com',
-  WHOP_CLIENT_ID: process.env.WHOP_CLIENT_ID || process.env.NEXT_PUBLIC_WHOP_APP_ID || '',
+  WHOP_CLIENT_ID: process.env.WHOP_CLIENT_ID || '',
   WHOP_CLIENT_SECRET: process.env.WHOP_CLIENT_SECRET || '',
   apiKey: process.env.WHOP_API_KEY,
   mockDM: process.env.MOCK_DM === '1' || process.env.MOCK_DM === 'true',

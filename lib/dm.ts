@@ -1,4 +1,4 @@
-import { whopSdk } from "@/lib/whop-sdk";
+import { getWhopSdk, getAgentAndCompany } from "@/lib/whop-sdk";
 import { getTemplateForBusiness } from "@/lib/db/templates";
 import { createClient } from "@supabase/supabase-js";
 import { logInfo, logError } from "@/lib/log";
@@ -7,8 +7,7 @@ function getSupabaseClient() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
 
-const AGENT = (process.env.WHOP_AGENT_USER_ID || "").trim();
-const BIZ   = (process.env.WHOP_COMPANY_ID || "").trim();
+// Removed hardcoded env vars - now using getAgentAndCompany()
 
 type SendParams = {
   businessId: string;                // new
@@ -28,9 +27,8 @@ export async function sendWelcomeDM(params: SendParams) {
   if (!recipient) {
     throw new Error("Recipient is empty: toUserIdOrUsername was falsy/blank.");
   }
-  if (!AGENT) {
-    throw new Error("WHOP_AGENT_USER_ID is not set.");
-  }
+
+  const { agentUserId } = getAgentAndCompany();
 
   // Select template scoped by business (fallback to global)
   const tmpl = await getTemplateForBusiness(businessId);
@@ -44,14 +42,12 @@ export async function sendWelcomeDM(params: SendParams) {
   logInfo("dm.send.attempt", { businessId, toUser: recipient, templateId, eventId });
 
   try {
-    let client: any = whopSdk.withUser(AGENT);
-    if (BIZ && typeof client.withCompany === "function") {
-      client = client.withCompany(BIZ);
-    }
-
-    await client.messages.sendDirectMessageToUser({
+    const whop = getWhopSdk();
+    
+    // IMPORTANT: use the server app key + agent identity; do NOT call withUser()
+    await whop.messages.sendDirectMessageToUser({
       toUserIdOrUsername: recipient,
-      message
+      message,
     });
     
     logInfo("dm.send.ok", { businessId, toUser: recipient, templateId, eventId });

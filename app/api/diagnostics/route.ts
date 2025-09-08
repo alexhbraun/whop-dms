@@ -8,7 +8,8 @@ const REQUIRED_ENVS = [
   'NEXT_PUBLIC_SUPABASE_URL',
   'SUPABASE_SERVICE_KEY',
   'WHOP_API_KEY',
-  'NEXT_PUBLIC_WHOP_COMPANY_ID',
+  'WHOP_AGENT_USER_ID',
+  'WHOP_COMPANY_ID',
 ];
 
 function ok(v: any) { return { ok: true, ...v }; }

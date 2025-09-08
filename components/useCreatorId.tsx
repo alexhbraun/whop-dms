@@ -35,16 +35,10 @@ export default function useCreatorId(searchParams?: any) {
         }
       } catch {} // Silent fail on network error, proceed to fallback
 
-      // 3. Fallback to env var
-      if (process.env.NEXT_PUBLIC_WHOP_COMPANY_ID) {
-        setCreatorId(process.env.NEXT_PUBLIC_WHOP_COMPANY_ID);
-        setSource('env_fallback');
-        setUnresolved(true); // Mark as unresolved since it's a fallback
-      } else {
-        setCreatorId(null);
-        setUnresolved(true);
-        setSource('unresolved'); // Explicitly mark as unresolved if no fallback
-      }
+      // 3. No fallback - require proper resolution
+      setCreatorId(null);
+      setUnresolved(true);
+      setSource('unresolved'); // Explicitly mark as unresolved if no fallback
     })();
   }, [host, qId]);
 

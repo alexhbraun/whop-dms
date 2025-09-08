@@ -1,29 +1,25 @@
-export const runtime = "nodejs";
 import { NextResponse } from "next/server";
-import { whopSdk } from "@/lib/whop-sdk";
+import { getWhopSdk, getAgentAndCompany } from "@/lib/whop-sdk";
+
+export const runtime = "nodejs";
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
-    const { toUserIdOrUsername, message } = await req.json();
+    const { toUserIdOrUsername, message, businessId } = await req.json();
 
-    if (!toUserIdOrUsername || !message) {
+    if (!toUserIdOrUsername || !message || !businessId) {
       return NextResponse.json(
-        { ok: false, error: "Missing toUserIdOrUsername or message" },
+        { ok: false, error: "Missing toUserIdOrUsername, message, or businessId" },
         { status: 400 }
       );
     }
 
-    const agentId = (process.env.WHOP_AGENT_USER_ID ?? "").trim();
-    if (!agentId) {
-      return NextResponse.json(
-        { ok: false, error: "Missing WHOP_AGENT_USER_ID env var" },
-        { status: 500 }
-      );
-    }
+    const { agentUserId } = getAgentAndCompany();
+    const whop = getWhopSdk();
 
-    // ✅ Send as the Agent user (generates user token under the hood)
-    const client = whopSdk.withUser(agentId);
-    const result = await client.messages.sendDirectMessageToUser({
+    // Send as the Agent user using server-side app key
+    const result = await whop.messages.sendDirectMessageToUser({
       toUserIdOrUsername,
       message,
     });

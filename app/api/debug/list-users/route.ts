@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { whopSdk } from "@/lib/whop-sdk";
+import { getWhopSdk } from "@/lib/whop-sdk";
 
 export const runtime = "nodejs";
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const result = await whopSdk.experiences.listUsersForExperience({
+    const whop = getWhopSdk();
+    const result = await whop.experiences.listUsersForExperience({
       experienceId: "exp_zHM6MFJ0smwUeU",
       first: 10,
     });
