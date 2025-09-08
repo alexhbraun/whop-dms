@@ -1,9 +1,11 @@
 export const runtime = "nodejs";
 import { NextResponse } from "next/server";
+import { requireAdminSecret } from "@/lib/admin-auth";
 
 const DM_URL = "https://api.whop.com/v1/messages/send-direct-message-to-user";
 
 export async function POST(req: Request) {
+  requireAdminSecret(req);
   try {
     const { toUserIdOrUsername, message } = await req.json();
     if (!toUserIdOrUsername || !message) {

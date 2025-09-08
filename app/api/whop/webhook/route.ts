@@ -6,6 +6,7 @@ import { sendWelcomeDM } from "@/lib/dm";
 import { createClient } from "@supabase/supabase-js";
 import { getBaseUrl } from "@/lib/urls";
 import { DM_ENABLED } from "@/lib/feature-flags";
+import { hasSentForEvent } from "@/lib/dm-db";
 
 function getSupabaseClient() {
   return createClient(
@@ -48,6 +49,12 @@ export async function POST(req: NextRequest) {
 
     // Handle member.created events
     if (event.type === "member.created") {
+      const already = await hasSentForEvent(event.id);
+      if (already) {
+        await logDm({ event_id: event.id, to_user: "(skipped)", status: "deferred", error: "duplicate_event_id" });
+        return NextResponse.json({ ok: true, skipped: "duplicate_event_id" });
+      }
+
       const rawUser = event.data?.user || {};
       const recipient =
         (rawUser.username ?? "").toString().trim() ||

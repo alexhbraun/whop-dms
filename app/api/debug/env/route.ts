@@ -1,5 +1,8 @@
 // app/api/debug/env/route.ts
-export async function GET() {
+import { requireAdminSecret } from "@/lib/admin-auth";
+
+export async function GET(req: Request) {
+  requireAdminSecret(req);
   const raw = process.env.DM_ONBOARDING_ENABLED ?? "(undefined)";
   const normalized = String(raw).toLowerCase().trim();
   const enabled = normalized === "true";

@@ -2,8 +2,10 @@ export const runtime = "nodejs";
 
 // app/api/debug/whop/route.ts
 import { whopSdk } from "@/lib/whop-sdk";
+import { requireAdminSecret } from "@/lib/admin-auth";
 
-export async function GET() {
+export async function GET(req: Request) {
+  requireAdminSecret(req);
   try {
     const key = process.env.WHOP_API_KEY ?? process.env.WHOP_APP_API_KEY ?? "";
     const preview = key ? `${key.slice(0, 4)}…(${key.length})` : "(missing)";

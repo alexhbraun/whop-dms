@@ -2,8 +2,10 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { sendWelcomeDM } from "@/lib/dm";
+import { requireAdminSecret } from "@/lib/admin-auth";
 
 export async function POST(req: Request) {
+  requireAdminSecret(req);
   try {
     const { to, message } = await req.json();
     const res = await sendWelcomeDM(String(to || ""), String(message || "Helper test ✅"));
