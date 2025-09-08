@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react';
 import useCreatorId from '@/components/useCreatorId';
 import Link from 'next/link';
+import Button from '@/components/ui/Button';
+import PageHeader from '@/components/PageHeader';
 
 export default function SettingsPage({ searchParams }: { searchParams?: any }) {
   const { creatorId, unresolved } = useCreatorId(searchParams);
@@ -67,10 +69,9 @@ export default function SettingsPage({ searchParams }: { searchParams?: any }) {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className="text-4xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">App Settings</h1>
-      <p className="mt-1 text-gray-600">Configure your integration.</p>
+      <PageHeader title="App Settings" subtitle="Configure your integration" />
 
-      <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="nexo-card">
         <div className="text-lg font-semibold text-gray-800">General Settings</div>
         <div className="mt-4 space-y-6">
           {/* Require email */}
@@ -111,16 +112,16 @@ export default function SettingsPage({ searchParams }: { searchParams?: any }) {
         {error && <div className="mt-4 text-sm text-red-600">{error}</div>}
 
         <div className="mt-5 flex items-center gap-3">
-          <button
+          <Button
             onClick={save}
             disabled={disabled}
-            className="rounded-lg px-4 py-2 text-sm text-white bg-indigo-600 disabled:opacity-50 hover:bg-indigo-700 transition"
+            variant="brand"
           >
             {saving ? 'Saving…' : 'Save Settings'}
-          </button>
+          </Button>
           {ok && <div className="text-sm text-green-600">✅ Settings saved</div>}
           <div className="ms-auto">
-            <Link href={`/app${creatorId ? `?community_id=${encodeURIComponent(creatorId)}` : ''}`} className="text-gray-600 underline hover:text-gray-800">
+            <Link href={`/app${creatorId ? `?community_id=${encodeURIComponent(creatorId)}` : ''}`} className="text-brand-red hover:underline">
               ← Back to App
             </Link>
           </div>

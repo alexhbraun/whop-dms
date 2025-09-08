@@ -12,8 +12,8 @@ export default function Header() {
     <header className="w-full py-6 px-6 text-gray-800">
       <div className="flex items-center justify-between max-w-7xl mx-auto">
         <div>
-          <h1 className="text-4xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">Whop DMS</h1>
-          <p className="text-xl text-gray-600">Elevate Your Community Experience</p>
+          <h1 className="text-4xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-brand-orange to-brand-red">Nexo</h1>
+          <p className="text-xl text-gray-600">Turn New Members into Engaged Fans</p>
         </div>
         {isDashboardPage && (
           <Link href="/app" className="text-sm underline text-gray-600 hover:text-gray-800">

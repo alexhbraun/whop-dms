@@ -12,7 +12,22 @@ module.exports = {
         inter: ['var(--font-inter)'],
       },
       colors: {
-        // You can add custom color palettes here if needed
+        brand: {
+          red: "#DC2828",
+          orange: "#FF8232",
+          coral: "#FF6B6B",
+          amber: "#FFB347",
+          peach: "#FFD9C0",
+          white: "#FFFFFF",
+          gray: "#F5F5F5",
+          charcoal: "#222222",
+        },
+      },
+      backgroundImage: {
+        "brand-gradient": "linear-gradient(90deg, #FF8232 0%, #DC2828 100%)",
+      },
+      boxShadow: {
+        "glass": "0 10px 30px rgba(0,0,0,0.08)",
       },
       keyframes: {
         noise: {

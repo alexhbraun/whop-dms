@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import useCreatorId from '@/components/useCreatorId';
 import InfoCard from '@/components/InfoCard'; // Import InfoCard
 import Link from 'next/link'; // Explicitly import Link
+import Button from '@/components/ui/Button';
+import PageHeader from '@/components/PageHeader';
 
 interface MessagesPageProps {
   searchParams: { [key: string]: string | string[] | undefined };
@@ -124,11 +126,13 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
 
   return (
     <div className="space-y-4"> {/* Removed container flex-grow py-8 and header, replaced with simple div and space-y-4 */}
+      <PageHeader title="DM Templates" subtitle="Craft your welcome messages — personal, professional, or fun" />
+      
       {unresolved && (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm mb-4 max-w-3xl mx-auto text-red-800 text-center">
           <div className="font-semibold mb-1">Unresolved Creator ID</div>
           <p className="text-sm text-red-600">You must finish setup on the Home screen to manage DM templates.</p>
-          <Link href="/app" className="mt-2 text-xs underline underline-offset-2 text-red-600 hover:text-red-800">Go to Home</Link>
+          <Link href="/app" className="mt-2 text-xs underline underline-offset-2 text-brand-red hover:text-red-800">Go to Home</Link>
         </div>
       )}
 
@@ -138,16 +142,16 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
         {/* List Column */}
         <div className="md:col-span-1 space-y-2">
           {templates.length === 0 ? (
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm">
-              <div className="text-lg font-semibold mb-2 text-gray-800">No DM Templates Yet</div>
+            <div className="nexo-card text-center">
+              <div className="text-lg font-semibold mb-2 text-brand-charcoal">No DM Templates Yet</div>
               <p className="text-sm text-gray-600 mb-4">Start by creating your first welcome message template.</p>
-              <button
+              <Button
                 onClick={createFirstTemplate}
                 disabled={busy || unresolved}
-                className="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-white text-sm hover:bg-indigo-700 disabled:opacity-50"
+                variant="brand"
               >
                 {busy ? 'Creating…' : '＋ Create First Template'}
-              </button>
+              </Button>
               {err && <div className="mt-3 text-sm text-red-600">{err}</div>}
             </div>
           ) : (
@@ -155,10 +159,10 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
               <button
                 key={t.id}
                 onClick={() => setSelectedId(t.id)}
-                className={`w-full text-left rounded-xl border p-3 shadow-sm ${selectedId === t.id ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                className={`w-full text-left rounded-xl border p-3 shadow-sm ${selectedId === t.id ? 'border-brand-orange bg-brand-peach/20' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
               >
                 <div className="flex items-center justify-between">
-                  <div className="font-medium text-gray-800">{t.name}</div>
+                  <div className="font-medium text-brand-charcoal">{t.name}</div>
                   {t.is_default ? <span className="text-xs text-green-600">default</span> : null}
                 </div>
                 <div className="text-xs text-gray-600 mt-1 line-clamp-2">{t.content}</div>
@@ -170,7 +174,22 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
         {/* Editor Column */}
         <div className="md:col-span-2 space-y-4">
           <InfoCard />
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          
+          {/* Glass Preview */}
+          <div className="nexo-card relative overflow-hidden">
+            <div className="absolute inset-0" style={{ backdropFilter: "blur(8px)", background: "var(--glass-gray)" }} />
+            <div className="relative">
+              <h3 className="text-lg font-semibold mb-2 text-brand-charcoal">Preview</h3>
+              <div className="bg-white/80 rounded-lg p-4 border border-white/20">
+                <div className="text-sm text-gray-600 mb-2">From: Nexo Agent</div>
+                <div className="text-sm text-brand-charcoal whitespace-pre-wrap">
+                  {draftContent || "Your message will appear here..."}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="nexo-card">
             {!current ? (
               <div className="text-gray-600">Select a template to edit.</div>
             ) : (
@@ -209,20 +228,20 @@ export default function MessagesPage({ searchParams }: MessagesPageProps) {
                 {err && <div className="mt-2 text-sm text-red-600">{err}</div>}
 
                 <div className="mt-4 flex gap-2">
-                  <button
+                  <Button
                     onClick={save}
                     disabled={saving}
-                    className="rounded-lg px-4 py-2 text-sm text-white bg-indigo-600 disabled:opacity-50 hover:bg-indigo-700 transition"
+                    variant="brand"
                   >
                     {saving ? 'Saving…' : 'Save (⌘/Ctrl+S)'}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={del}
                     disabled={saving}
-                    className="rounded-lg px-4 py-2 text-sm text-gray-700 border border-gray-300 hover:bg-gray-50"
+                    variant="ghost"
                   >
                     Delete
-                  </button>
+                  </Button>
                 </div>
               </>
             )}

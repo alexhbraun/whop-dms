@@ -18,10 +18,10 @@ export default function AppHome() {
   const { creatorId, host, source, unresolved } = useCreatorId(searchParams); // Keeping for debug info
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-indigo-50 via-white to-sky-100 px-6 py-12"> {/* Light gradient background */}
+    <div className="min-h-screen bg-gradient-to-b from-brand-gray via-white to-brand-peach px-6 py-12"> {/* Light gradient background */}
       <div className="text-center max-w-3xl mx-auto"> {/* Centered content area */}
-        <h1 className="text-4xl sm:text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
-          Turn New Members into Engaged Community Fans — Automatically
+        <h1 className="text-4xl sm:text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-brand-orange to-brand-red">
+          Nexo — Turn New Members into Engaged Fans
         </h1>
         <p className="mt-4 text-lg text-gray-600">
           Send a personal DM the moment someone joins, capture their email or goals,
@@ -45,9 +45,9 @@ export default function AppHome() {
           { title: "Onboarding Questions", icon: "📝", desc: "Ask for emails, goals, or preferences with one click.", href: "/dashboard/questions" },
           { title: "Leads", icon: "📊", desc: "View all your member responses in one dashboard.", href: "/dashboard/leads" },
         ].map(card => (
-          <Link key={card.title} href={card.href} className="bg-white rounded-2xl shadow-md p-6 hover:shadow-lg hover:scale-[1.02] transition block"> {/* Link wrapper for cards */}
+          <Link key={card.title} href={card.href} className="nexo-card hover:shadow-xl hover:scale-[1.02] transition block"> {/* Link wrapper for cards */}
             <div className="text-3xl mb-3">{card.icon}</div>
-            <h3 className="text-xl font-semibold text-gray-800">{card.title}</h3>
+            <h3 className="text-xl font-semibold text-brand-charcoal">{card.title}</h3>
             <p className="mt-1 text-gray-500">{card.desc}</p>
           </Link>
         ))}

@@ -4,10 +4,22 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --brand-red: #DC2828;
+  --brand-orange: #FF8232;
+  --brand-coral: #FF6B6B;
+  --brand-amber: #FFB347;
+  --brand-peach: #FFD9C0;
+  --brand-white: #FFFFFF;
+  --brand-gray: #F5F5F5;
+  --brand-charcoal: #222222;
+  --glass-gray: rgba(255,255,255,0.2);
+}
+
 @layer base {
   html {
     @apply font-inter antialiased;
-    @apply bg-gradient-to-b from-indigo-50 via-white to-sky-100;
+    @apply bg-gradient-to-b from-brand-gray via-white to-brand-peach;
     /* Light gradient background that matches page content */
     background-attachment: fixed;
     background-size: cover;
@@ -16,6 +28,8 @@
 
   body {
     @apply min-h-screen flex flex-col;
+    color: var(--brand-charcoal);
+    background: var(--brand-gray);
     /* This ensures the content is centered and takes full height */
     height: 100%;
     width: 100%;
@@ -29,24 +43,40 @@
 }
 
 @layer components {
+  .nexo-card {
+    @apply bg-white rounded-2xl p-5 shadow-glass border border-neutral-200;
+  }
+
   .glass-card {
     @apply relative rounded-2xl border border-gray-200 backdrop-blur-xl shadow-lg transition-all duration-300 ease-in-out;
     @apply bg-white/90;
     @apply hover:border-gray-300 hover:shadow-xl;
   }
 
+  .btn-brand {
+    @apply text-white px-4 py-2 rounded-xl font-medium shadow-md transition-transform active:scale-95;
+    background: linear-gradient(90deg, var(--brand-orange), var(--brand-red));
+  }
+
+  .btn-secondary {
+    @apply text-white px-4 py-2 rounded-xl font-medium shadow-md transition-transform active:scale-95;
+    background: var(--brand-coral);
+  }
+
+  .badge-amber {
+    @apply inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium;
+    background: var(--brand-amber);
+    color: #3a2a00;
+  }
+
   /* Custom focus ring for accessibility */
   .focus-ring {
-    @apply outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-white;
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-orange/40 focus-visible:ring-offset-white;
   }
 
   /* Base button styling */
   .btn {
-    @apply inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus-ring;
-  }
-
-  .btn-secondary {
-    @apply bg-gray-600 hover:bg-gray-700;
+    @apply inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-red hover:bg-brand-red/90 focus-ring;
   }
 
   /* Form elements styling */
@@ -55,7 +85,7 @@
   input[type="password"],
   textarea,
   select {
-    @apply block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white text-gray-900;
+    @apply block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-orange focus:ring-brand-orange/40 bg-white text-brand-charcoal;
   }
 }
 

@@ -1,0 +1,13 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#F5F5F5"/>
+  <rect x="100" y="100" width="200" height="200" rx="40" fill="url(#gradient)"/>
+  <text x="350" y="180" font-family="Inter, sans-serif" font-size="64" font-weight="700" fill="#222222">Nexo</text>
+  <text x="350" y="240" font-family="Inter, sans-serif" font-size="32" font-weight="400" fill="#666666">Welcome DMs</text>
+  <text x="350" y="300" font-family="Inter, sans-serif" font-size="24" font-weight="400" fill="#888888">Turn new members into engaged community fans — automatically.</text>
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#FF8232"/>
+      <stop offset="100%" style="stop-color:#DC2828"/>
+    </linearGradient>
+  </defs>
+</svg>
