@@ -9,7 +9,7 @@ export async function GET() {
 
     const client = whopSdk.withUser(agentId);
     // Simple user read as the agent itself
-    const me = await client.users.getUser({ id: agentId });
+    const me = await client.users.getUser({ userId: agentId });
     return NextResponse.json({ ok: true, me });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message ?? String(e) }, { status: 500 });
