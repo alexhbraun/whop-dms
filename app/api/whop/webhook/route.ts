@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { whopSdk } from "@/lib/whop-sdk";
+import { sendWelcomeDM } from "@/lib/dm";
 import { createClient } from "@supabase/supabase-js";
 import { getBaseUrl } from "@/lib/urls";
 import { DM_ENABLED } from "@/lib/feature-flags";
@@ -72,15 +73,9 @@ export async function POST(req: NextRequest) {
         "DM about to send. runtime=node, sdk=@whop/api, keyLen:",
         (process.env.WHOP_API_KEY ?? "").trim().length
       );
-      
-      const agentId = process.env.WHOP_AGENT_USER_ID!;
-      const client = whopSdk.withUser(agentId);
-      
-      await client.messages.sendDirectMessageToUser({
-        toUserIdOrUsername: toUser,
-        message,
-      });
-      
+
+      await sendWelcomeDM(toUser, message);
+
       await cacheUser(business_id, member_id, toUser);
       await log(event.id, business_id, toUser, "success", message);
       
