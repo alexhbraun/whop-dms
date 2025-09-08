@@ -1,4 +1,5 @@
 export const runtime = "nodejs";
+export const dynamic = 'force-dynamic';
 
 // app/api/debug/whop/route.ts
 import { whopSdk } from "@/lib/whop-sdk";

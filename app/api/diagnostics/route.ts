@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServerSupabase } from '@/lib/supabaseServer';
 import { requireAdminSecret } from "@/lib/admin-auth";
 
+export const dynamic = 'force-dynamic';
+
 const REQUIRED_ENVS = [
   'NEXT_PUBLIC_SUPABASE_URL',
   'SUPABASE_SERVICE_KEY',
