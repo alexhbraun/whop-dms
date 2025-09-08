@@ -18,9 +18,9 @@ export function getAgentAndCompany() {
   return { agentUserId, companyId };
 }
 
-// Legacy export for backward compatibility (will be removed)
-export const whopSdk = {
-  withUser: () => {
-    throw new Error("withUser() is deprecated. Use getWhopSdk() instead.");
-  }
-};
+// For DM sending, we need to use withUser() to set the x-on-behalf-of header
+export function getWhopSdkWithAgent() {
+  const sdk = getWhopSdk();
+  const { agentUserId } = getAgentAndCompany();
+  return sdk.withUser(agentUserId);
+}

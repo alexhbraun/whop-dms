@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getWhopSdk, getAgentAndCompany } from "@/lib/whop-sdk";
+import { getWhopSdkWithAgent } from "@/lib/whop-sdk";
 
 export const runtime = "nodejs";
 export const dynamic = 'force-dynamic';
@@ -11,8 +11,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Missing toUserIdOrUsername, message, or businessId" }, { status: 400 });
     }
 
-    const { agentUserId } = getAgentAndCompany();
-    const whop = getWhopSdk();
+    const whop = getWhopSdkWithAgent();
 
     const result = await whop.messages.sendDirectMessageToUser({ 
       toUserIdOrUsername, 

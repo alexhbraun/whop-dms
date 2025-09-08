@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getWhopSdk, getAgentAndCompany } from "@/lib/whop-sdk";
+import { getWhopSdkWithAgent } from "@/lib/whop-sdk";
 
 export const runtime = "nodejs";
 export const dynamic = 'force-dynamic';
@@ -15,10 +15,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const { agentUserId } = getAgentAndCompany();
-    const whop = getWhopSdk();
+    const whop = getWhopSdkWithAgent();
 
-    // Send as the Agent user using server-side app key
+    // Send as the Agent user using server-side app key + x-on-behalf-of header
     const result = await whop.messages.sendDirectMessageToUser({
       toUserIdOrUsername,
       message,

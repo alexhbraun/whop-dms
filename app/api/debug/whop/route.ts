@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = 'force-dynamic';
 
 // app/api/debug/whop/route.ts
-import { whopSdk } from "@/lib/whop-sdk";
+import { getWhopSdk } from "@/lib/whop-sdk";
 import { requireAdminSecret } from "@/lib/admin-auth";
 
 export async function GET(req: Request) {
@@ -12,7 +12,13 @@ export async function GET(req: Request) {
     const preview = key ? `${key.slice(0, 4)}…(${key.length})` : "(missing)";
 
     // Light SDK check
-    const sdkReady = Boolean(whopSdk);
+    let sdkReady = false;
+    try {
+      getWhopSdk();
+      sdkReady = true;
+    } catch {
+      sdkReady = false;
+    }
 
     return new Response(
       JSON.stringify({

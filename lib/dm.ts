@@ -1,4 +1,4 @@
-import { getWhopSdk, getAgentAndCompany } from "@/lib/whop-sdk";
+import { getWhopSdkWithAgent } from "@/lib/whop-sdk";
 import { getTemplateForBusiness } from "@/lib/db/templates";
 import { createClient } from "@supabase/supabase-js";
 import { logInfo, logError } from "@/lib/log";
@@ -28,8 +28,6 @@ export async function sendWelcomeDM(params: SendParams) {
     throw new Error("Recipient is empty: toUserIdOrUsername was falsy/blank.");
   }
 
-  const { agentUserId } = getAgentAndCompany();
-
   // Select template scoped by business (fallback to global)
   const tmpl = await getTemplateForBusiness(businessId);
   const message = (templateOverride ?? tmpl?.message_body ?? "Welcome to the community!");
@@ -42,9 +40,9 @@ export async function sendWelcomeDM(params: SendParams) {
   logInfo("dm.send.attempt", { businessId, toUser: recipient, templateId, eventId });
 
   try {
-    const whop = getWhopSdk();
+    const whop = getWhopSdkWithAgent();
     
-    // IMPORTANT: use the server app key + agent identity; do NOT call withUser()
+    // Use withUser() to set x-on-behalf-of header for DM sending
     await whop.messages.sendDirectMessageToUser({
       toUserIdOrUsername: recipient,
       message,

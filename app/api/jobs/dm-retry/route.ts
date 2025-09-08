@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { getWhopSdk } from "@/lib/whop-sdk";
+import { getWhopSdk, getWhopSdkWithAgent } from "@/lib/whop-sdk";
 import { getBaseUrl } from "@/lib/urls";
 import { DM_ENABLED } from "@/lib/feature-flags";
 
@@ -56,7 +56,7 @@ export async function GET() {
           member_id: row.to_user 
         });
 
-        const whop = getWhopSdk();
+        const whop = getWhopSdkWithAgent();
         await whop.messages.sendDirectMessageToUser({
           toUserIdOrUsername: toUser,
           message,

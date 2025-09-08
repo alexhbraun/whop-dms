@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { sendWelcomeDM } from "@/lib/dm";
+import { getWhopSdkWithAgent } from "@/lib/whop-sdk";
 
 export const runtime = "nodejs";
 export const dynamic = 'force-dynamic';
@@ -10,13 +10,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Missing fields" }, { status: 400 });
 
   try {
-    const r = await sendWelcomeDM({
-      businessId,
+    // Use withUser() to automatically attach app API key and x-on-behalf-of header
+    const whop = getWhopSdkWithAgent();
+    
+    const result = await whop.messages.sendDirectMessageToUser({
       toUserIdOrUsername,
-      templateOverride: message,
-      eventId: `debug_${Date.now()}`,
+      message,
     });
-    return NextResponse.json({ ok: true, result: r });
+    
+    return NextResponse.json({ ok: true, result });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
   }
