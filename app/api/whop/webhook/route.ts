@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     if (event.type === "member.created") {
       const already = await hasSentForEvent(event.id);
       if (already) {
-        await logDm({ event_id: event.id, to_user: "(skipped)", status: "deferred", error: "duplicate_event_id" });
+        console.log(`[WHOP-WEBHOOK] Event ${event.id} already processed, skipping`);
         return NextResponse.json({ ok: true, skipped: "duplicate_event_id" });
       }
 
@@ -61,47 +61,26 @@ export async function POST(req: NextRequest) {
         (rawUser.id ?? "").toString().trim();
 
       if (!recipient) {
-        await logDm({
-          event_id: event.id,
-          to_user: "(empty)",
-          status: "failed",
-          error: "Webhook user missing both username and id",
-        });
+        console.log(`[WHOP-WEBHOOK] No recipient found for event ${event.id}`);
         return NextResponse.json({ ok: true, note: "no recipient" });
       }
 
       if (!DM_ENABLED) {
-        await logDm({
-          event_id: event.id,
-          to_user: recipient,
-          status: "deferred",
-          error: "DM disabled by flag",
-        });
         console.log(`[WHOP-WEBHOOK] DM disabled by flag for event ${event.id}`);
         return NextResponse.json({ ok: true, note: "DM disabled by flag" });
       }
 
       try {
-        await sendWelcomeDM(
-          recipient,
-          "🎉 Welcome to the community! Complete onboarding here: https://whop-dms.vercel.app/onboarding"
-        );
-        await logDm({
-          event_id: event.id,
-          to_user: recipient,
-          status: "sent",
-          error: null,
-          message_preview: "Welcome DM",
+        const result = await sendWelcomeDM({
+          businessId: business_id,
+          toUserIdOrUsername: recipient,
+          templateOverride: buildWelcomeDm({ business_id, member_id }),
+          eventId: event.id
         });
-        console.log(`[WHOP-WEBHOOK] DM sent successfully for event ${event.id}`);
-        return NextResponse.json({ ok: true });
+        
+        console.log(`[WHOP-WEBHOOK] DM sent successfully for event ${event.id}:`, result);
+        return NextResponse.json({ ok: true, result });
       } catch (e: any) {
-        await logDm({
-          event_id: event.id,
-          to_user: recipient,
-          status: "failed",
-          error: e?.message ?? String(e),
-        });
         console.error(`[WHOP-WEBHOOK] DM send failed for event ${event.id}:`, e?.message);
         return NextResponse.json({ ok: true, error: "send failed" });
       }
@@ -185,24 +164,29 @@ async function log(
 
 async function logDm({
   event_id,
+  business_id,
   to_user,
   status,
   error,
   message_preview,
+  template_id,
 }: {
   event_id: string;
+  business_id: string;
   to_user: string;
   status: string;
   error?: string | null;
   message_preview?: string;
+  template_id?: string | null;
 }) {
   const supabase = getSupabaseClient();
   await supabase.from("dm_send_log").insert({
     event_id,
-    business_id: "webhook", // simplified for member.created events
+    business_id,
     to_user,
     status,
     message_preview: message_preview?.slice(0, 240),
     error,
+    template_id,
   });
 }
