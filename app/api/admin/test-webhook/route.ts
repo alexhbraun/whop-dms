@@ -6,10 +6,47 @@ import { sendWelcomeDM } from "@/lib/dm";
 export const runtime = "nodejs";
 export const dynamic = 'force-dynamic';
 
+function getAdminSecret(req: Request): string | null {
+  // Try headers first
+  const headerSecret1 = req.headers.get("x-admin-secret");
+  const headerSecret2 = req.headers.get("x-admin-dash-secret");
+  
+  // Try query param
+  const url = new URL(req.url);
+  const querySecret = url.searchParams.get("secret");
+  
+  // Return first non-empty value
+  return headerSecret1?.trim() || headerSecret2?.trim() || querySecret?.trim() || null;
+}
+
+function checkAuth(req: Request): { ok: boolean; error?: string } {
+  const supplied = getAdminSecret(req);
+  const env = process.env.ADMIN_DASH_SECRET?.trim();
+  
+  if (!supplied || !env || supplied !== env) {
+    return { ok: false, error: "unauthorized" };
+  }
+  
+  return { ok: true };
+}
+
+export async function GET(req: Request) {
+  const supplied = getAdminSecret(req);
+  const env = process.env.ADMIN_DASH_SECRET?.trim();
+  
+  return NextResponse.json({
+    ok: true,
+    haveEnv: Boolean(env),
+    haveHeader: Boolean(supplied),
+    match: Boolean(supplied && env && supplied === env),
+    note: "No secrets leaked; values trimmed before compare."
+  });
+}
+
 export async function POST(req: Request) {
-  const secret = req.headers.get("x-admin-secret");
-  if (!secret || secret !== process.env.NEXT_PUBLIC_ADMIN_DASH_SECRET) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  const auth = checkAuth(req);
+  if (!auth.ok) {
+    return NextResponse.json({ ok: false, error: auth.error }, { status: 401 });
   }
 
   const { businessId, username, message } = await req.json();
