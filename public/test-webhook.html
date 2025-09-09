@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Webhook Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .container { max-width: 600px; }
+        button { padding: 10px 20px; margin: 10px 0; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px; white-space: pre-wrap; }
+        input { padding: 8px; margin: 5px; width: 200px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Webhook Test</h1>
+        
+        <div>
+            <label>Username:</label><br>
+            <input type="text" id="username" placeholder="testuser" value="testuser">
+        </div>
+        
+        <div>
+            <label>Business ID:</label><br>
+            <input type="text" id="businessId" placeholder="biz_ZeQXyckPafiuua" value="biz_ZeQXyckPafiuua">
+        </div>
+        
+        <div>
+            <button onclick="testWebhook()">Test Webhook</button>
+            <button onclick="testSimple()">Test Simple Endpoint</button>
+        </div>
+        
+        <div id="result" class="result"></div>
+    </div>
+
+    <script>
+        async function testWebhook() {
+            const resultDiv = document.getElementById('result');
+            const username = document.getElementById('username').value;
+            const businessId = document.getElementById('businessId').value;
+            
+            resultDiv.innerHTML = 'Testing webhook...';
+            
+            try {
+                const response = await fetch('/api/debug/test-webhook-public', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, businessId })
+                });
+                
+                const data = await response.json();
+                resultDiv.innerHTML = `<h3>Webhook Test Result:</h3><pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                resultDiv.innerHTML = `<h3>Webhook Test Error:</h3><pre>${error.message}</pre>`;
+            }
+        }
+
+        async function testSimple() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Testing simple endpoint...';
+            
+            try {
+                const response = await fetch('/api/test-simple');
+                const data = await response.json();
+                resultDiv.innerHTML = `<h3>Simple Test Result:</h3><pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                resultDiv.innerHTML = `<h3>Simple Test Error:</h3><pre>${error.message}</pre>`;
+            }
+        }
+    </script>
+</body>
+</html>
