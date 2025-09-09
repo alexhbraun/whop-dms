@@ -17,7 +17,7 @@ function getSupabaseClient() {
 
 type MemberCreated = {
   id: string;
-  type: "member.created" | "membership_went_valid";
+  type: "member.created" | "membership_went_valid" | "membership_experience_claimed";
   data: {
     business_id?: string;
     company_id?: string;
@@ -52,8 +52,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, note: "already processed" });
     }
 
-    // Handle member.created events OR membership_went_valid events
-    if (event.type === "member.created" || event.type === "membership_went_valid") {
+    // Handle member.created events OR membership_went_valid events OR membership_experience_claimed events
+    if (event.type === "member.created" || event.type === "membership_went_valid" || event.type === "membership_experience_claimed") {
       console.log(`[WHOP-WEBHOOK] Processing ${event.type} event:`, JSON.stringify(event, null, 2));
       
       const already = await hasSentForEvent(event.id);

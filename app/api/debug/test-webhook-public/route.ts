@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Simulate a membership_went_valid webhook event
+    // Simulate a membership_experience_claimed webhook event
     const eventId = `test_webhook_${Date.now()}`;
     const memberId = `mem_test_${Date.now()}`;
     
