@@ -69,8 +69,9 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
     if (!list.length) return NextResponse.json({ ok: false, error: 'No questions provided' });
 
     // Separate new questions from existing ones
-    const existingQuestions = list.filter(q => q.id);
-    const newQuestions = list.filter(q => !q.id);
+    // Temporary IDs start with "new-" or "temp-", real UUIDs don't
+    const existingQuestions = list.filter(q => q.id && !q.id.startsWith('new-') && !q.id.startsWith('temp-'));
+    const newQuestions = list.filter(q => !q.id || q.id.startsWith('new-') || q.id.startsWith('temp-'));
 
     // Handle existing questions (update)
     if (existingQuestions.length > 0) {
