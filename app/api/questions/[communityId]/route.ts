@@ -70,7 +70,7 @@ export async function GET(_req: Request, { params }: { params: { communityId: st
     const { data, error } = await supabase
       .from('onboarding_questions')
       .select('id, community_id, business_id, label, type, is_required, order_index, options, key_slug')
-      .eq('business_id', params.communityId)
+      .or(`business_id.eq.${params.communityId},community_id.eq.${params.communityId}`)
       .order('order_index', { ascending: true });
 
     if (error) {
@@ -163,7 +163,7 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
     const { data: after, error: afterErr } = await supabase
       .from('onboarding_questions')
       .select('id, community_id, business_id, label, type, is_required, order_index, options, key_slug')
-      .eq('business_id', params.communityId)
+      .or(`business_id.eq.${params.communityId},community_id.eq.${params.communityId}`)
       .order('order_index', { ascending: true });
 
     if (afterErr) {
