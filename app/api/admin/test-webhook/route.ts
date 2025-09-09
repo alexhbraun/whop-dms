@@ -45,11 +45,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
   }
 
-  const { businessId, username, userId, message, dryRun = false } = await req.json();
+  const { businessId, communityId, username, userId, message, dryRun = false } = await req.json();
+  const effectiveCommunityId = communityId ?? businessId;
   
   // Validate required fields
-  if (!businessId) {
-    return NextResponse.json({ ok: false, error: "businessId is required" }, { status: 400 });
+  if (!effectiveCommunityId) {
+    return NextResponse.json({ ok: false, error: "businessId or communityId is required" }, { status: 400 });
   }
   
   if (!username && !userId) {
@@ -62,6 +63,8 @@ export async function POST(req: Request) {
   // Log request details (excluding secret)
   console.log("admin/test-webhook POST", {
     businessId,
+    communityId,
+    effectiveCommunityId,
     username,
     userId,
     eventId,
@@ -73,7 +76,8 @@ export async function POST(req: Request) {
       ok: true,
       mode: "dry",
       preview: {
-        businessId,
+        businessId: effectiveCommunityId,
+        communityId: effectiveCommunityId,
         to: username || userId,
         message,
         eventId
@@ -84,7 +88,8 @@ export async function POST(req: Request) {
   // Real send
   try {
     const result = await sendAndLogDM({
-      businessId,
+      businessId: effectiveCommunityId,
+      communityId: effectiveCommunityId,
       toUser: { username, id: userId },
       message,
       eventId,

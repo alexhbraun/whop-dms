@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getWhopSdk } from "@/lib/whop-sdk";
-import { sendAndLogDM } from "@/lib/dm";
+import { sendWelcomeDM } from "@/lib/dm";
 import { getServiceDb } from "@/lib/db/client";
 import { getBaseUrl } from "@/lib/urls";
 import { DM_ENABLED } from "@/lib/feature-flags";
@@ -15,6 +15,7 @@ type WebhookEvent = {
   data: {
     business_id?: string;
     company_id?: string;
+    community_id?: string;
     experience_id?: string;
     member_id?: string;
     membership_id?: string;
@@ -37,11 +38,13 @@ export async function POST(req: NextRequest) {
     // Immediately persist into webhook_events
     try {
       const db = getServiceDb();
+      const communityId = payload.data?.community_id || payload.data?.business_id || payload.data?.company_id;
       await db.from("webhook_events").insert({
         event_type: payload.type || 'unknown',
         received_at: new Date().toISOString(),
         raw: payload,
-        business_id: payload.data?.business_id || payload.data?.company_id
+        business_id: communityId,
+        community_id: communityId
       });
     } catch (dbError) {
       console.error("Failed to persist webhook event:", dbError);
@@ -54,10 +57,12 @@ export async function POST(req: NextRequest) {
                              payload.type === "app_membership_went_valid";
     
     if (isOnboardingEvent) {
+      const communityId = payload.data?.community_id || payload.data?.business_id || payload.data?.company_id;
+      
       logInfo("dm.onboarding.trigger", { 
         eventType: payload.type, 
         eventId: payload.id,
-        businessId: payload.data?.business_id || payload.data?.company_id 
+        businessId: communityId 
       });
       
       const already = await hasSentForEvent(payload.id);
@@ -81,7 +86,6 @@ export async function POST(req: NextRequest) {
       }
 
       // Extract data
-      const businessId = payload.data?.business_id || payload.data?.company_id;
       const memberId = payload.data?.member_id || payload.data?.membership_id;
       
       const rawUser = payload.data?.user || payload.data?.member || {};
@@ -92,24 +96,24 @@ export async function POST(req: NextRequest) {
         logError("dm.onboarding.no_recipient", { 
           eventType: payload.type,
           eventId: payload.id,
-          businessId 
+          businessId: communityId 
         });
         return NextResponse.json({ ok: true, note: "no recipient" });
       }
 
-      if (!businessId) {
-        logError("dm.onboarding.no_business_id", { 
+      if (!communityId) {
+        logError("dm.onboarding.no_community_id", { 
           eventType: payload.type,
           eventId: payload.id 
         });
-        return NextResponse.json({ ok: true, note: "no business_id" });
+        return NextResponse.json({ ok: true, note: "no community_id" });
       }
 
       if (!memberId) {
         logError("dm.onboarding.no_member_id", { 
           eventType: payload.type,
           eventId: payload.id,
-          businessId 
+          businessId: communityId 
         });
         return NextResponse.json({ ok: true, note: "no member_id" });
       }
@@ -117,22 +121,23 @@ export async function POST(req: NextRequest) {
       try {
         // Build welcome message
         const baseUrl = getBaseUrl();
-        const onboardingUrl = `${baseUrl}/onboarding/${businessId}?member=${memberId}`;
+        const onboardingUrl = `${baseUrl}/onboarding/${communityId}?member=${memberId}`;
         const message = `🎉 Welcome to the community! Complete your onboarding here: ${onboardingUrl}`;
 
-        // Send DM using new sendAndLogDM function
-        const result = await sendAndLogDM({
-          businessId,
-          toUser: { username, id: userId },
-          message,
+        // Send DM using sendWelcomeDM function
+        const result = await sendWelcomeDM({
+          businessId: communityId,
+          communityId: communityId,
+          toUserIdOrUsername: username || userId,
+          templateOverride: message,
           eventId: payload.id || `webhook_${Date.now()}`,
-          source: 'webhook'
+          context: "onboarding"
         });
         
         logInfo("dm.onboarding.success", { 
           eventType: payload.type,
           eventId: payload.id,
-          businessId,
+          businessId: communityId,
           result 
         });
         return NextResponse.json({ ok: true, result });
@@ -140,7 +145,7 @@ export async function POST(req: NextRequest) {
         logError("dm.onboarding.failed", { 
           eventType: payload.type,
           eventId: payload.id,
-          businessId,
+          businessId: communityId,
           error: e?.message 
         });
         return NextResponse.json({ ok: true, error: "send failed" });

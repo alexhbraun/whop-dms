@@ -1,5 +1,5 @@
 import { getWhopSdkWithAgent } from "@/lib/whop-sdk";
-import { getTemplateForBusiness } from "@/lib/db/templates";
+import { getTemplateForCommunity } from "@/lib/db/templates";
 import { getServiceDb } from "@/lib/db/client";
 import { logInfo, logError } from "@/lib/log";
 
@@ -7,6 +7,7 @@ import { logInfo, logError } from "@/lib/log";
 
 interface SendOpts {
   businessId: string
+  communityId?: string                           // NEW preferred
   toUser: { username?: string; id?: string }     // at least one required
   message: string
   eventId: string                                // caller provides
@@ -16,6 +17,7 @@ interface SendOpts {
 
 type SendParams = {
   businessId: string;                // new
+  communityId?: string;              // NEW preferred
   toUser?: string;                   // "user_..." or "username" (renamed for compatibility)
   toUserIdOrUsername?: string;       // "user_..." or "username" (keep for backward compatibility)
   customMessage?: string;            // optional direct message body override (renamed for compatibility)
@@ -29,7 +31,8 @@ function clean(s?: string | null) {
 }
 
 export async function sendAndLogDM(opts: SendOpts): Promise<{ ok: boolean; status: string; error?: string }> {
-  const { businessId, toUser, message, eventId, source, templateId } = opts;
+  const { businessId, communityId, toUser, message, eventId, source, templateId } = opts;
+  const effectiveCommunityId = communityId ?? businessId;
   
   // Determine toUser label (username ?? id)
   const toUserLabel = toUser.username || toUser.id;
@@ -74,7 +77,7 @@ export async function sendAndLogDM(opts: SendOpts): Promise<{ ok: boolean; statu
     
     await db.from("dm_send_log").insert({
       event_id: eventId,
-      business_id: businessId,
+      business_id: effectiveCommunityId, // Store effective community id as business_id for now
       to_user: toUserLabel,
       status,
       error,
@@ -92,30 +95,32 @@ export async function sendAndLogDM(opts: SendOpts): Promise<{ ok: boolean; statu
 }
 
 export async function sendWelcomeDM(params: SendParams) {
-  const { businessId, toUser, toUserIdOrUsername, customMessage, templateOverride, eventId, context = "debug" } = params;
+  const { businessId, communityId, toUser, toUserIdOrUsername, customMessage, templateOverride, eventId, context = "debug" } = params;
   const recipient = clean(toUser || toUserIdOrUsername);
   const messageOverride = customMessage || templateOverride;
+  const effectiveCommunityId = communityId ?? businessId;
 
   if (!recipient) {
     throw new Error("Recipient is empty: toUser or toUserIdOrUsername must be provided.");
   }
 
-  // Select template scoped by business (fallback to global)
-  const tmpl = await getTemplateForBusiness(businessId);
+  // Select template scoped by community (fallback to global)
+  const tmpl = await getTemplateForCommunity(effectiveCommunityId);
   
-  // Check if template exists for business
+  // Check if template exists for community
   if (!tmpl && !messageOverride) {
-    logError("dm.onboarding.no_template", { businessId, userId: recipient, eventId });
-    throw new Error(`No template found for business ${businessId}`);
+    logError("dm.onboarding.no_template", { businessId: effectiveCommunityId, userId: recipient, eventId });
+    throw new Error(`No template found for community ${effectiveCommunityId}`);
   }
   
-  const message = (messageOverride ?? tmpl?.message_body ?? "Welcome to the community!");
+  const message = (messageOverride ?? tmpl?.content ?? "Welcome to the community!");
   const templateId = tmpl?.id ?? null;
   const finalEventId = eventId || `debug_${Date.now()}`;
 
   // Use the new sendAndLogDM function
   const result = await sendAndLogDM({
     businessId,
+    communityId: effectiveCommunityId,
     toUser: { username: recipient, id: undefined }, // Assume username for backward compatibility
     message,
     eventId: finalEventId,
@@ -128,7 +133,7 @@ export async function sendWelcomeDM(params: SendParams) {
     status: result.status, 
     error: result.error, 
     templateId, 
-    businessId 
+    businessId: effectiveCommunityId // Return effective community id
   };
 }
 

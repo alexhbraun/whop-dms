@@ -1,37 +1,41 @@
-import { createClient } from "@supabase/supabase-js";
-
-function getSupabaseClient() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-}
+import { getServiceDb } from "@/lib/db/client";
 
 export type OnboardingQuestion = {
   id: string;
-  business_id: string | null;
+  community_id: string | null;
+  business_id: string | null; // Keep for backward compatibility
   order_index: number | null;
   question_text: string;
   type: string;
   required: boolean | null;
 };
 
-export async function listQuestionsForBusiness(businessId: string): Promise<OnboardingQuestion[]> {
-  const supabase = getSupabaseClient();
+export async function listQuestionsForCommunity(communityId?: string): Promise<OnboardingQuestion[]> {
+  const supabase = getServiceDb();
   
-  // 1) Try per-business
-  let { data, error } = await supabase
-    .from("onboarding_questions")
-    .select("id,business_id,order_index,question_text,type,required")
-    .eq("business_id", businessId)
-    .order("order_index", { ascending: true });
+  if (communityId) {
+    // 1) Try per-community
+    let { data, error } = await supabase
+      .from("onboarding_questions")
+      .select("id,community_id,business_id,order_index,question_text,type,required")
+      .eq("community_id", communityId)
+      .order("order_index", { ascending: true });
 
-  if (!error && data && data.length > 0) return data as OnboardingQuestion[];
+    if (!error && data && data.length > 0) return data as OnboardingQuestion[];
+  }
 
-  // 2) Fallback: global
+  // 2) Fallback: global (community_id IS NULL)
   const fallback = await supabase
     .from("onboarding_questions")
-    .select("id,business_id,order_index,question_text,type,required")
-    .is("business_id", null)
+    .select("id,community_id,business_id,order_index,question_text,type,required")
+    .is("community_id", null)
     .order("order_index", { ascending: true });
 
   if (fallback.error || !fallback.data) return [];
   return fallback.data as OnboardingQuestion[];
+}
+
+// Back-compat: businessId is treated as communityId until callers migrate
+export async function listQuestionsForBusiness(businessId: string): Promise<OnboardingQuestion[]> {
+  return listQuestionsForCommunity(businessId);
 }
