@@ -1,54 +1,55 @@
 // app/api/admin/test-webhook/route.ts
 import { NextResponse } from "next/server";
 import { logInfo, logError } from "@/lib/log";
+import { sendWelcomeDM } from "@/lib/dm";
 
 export const runtime = "nodejs";
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
-  // Debug headers
-  console.log("Headers keys:", Object.keys(req.headers));
-  console.log("x-admin-secret:", req.headers.get("x-admin-secret"));
-  console.log("x-admin-dash-secret:", req.headers.get("x-admin-dash-secret"));
-  
-  return NextResponse.json({ ok: false, probe: true });
-  
   const secret = req.headers.get("x-admin-secret");
   if (!secret || secret !== process.env.NEXT_PUBLIC_ADMIN_DASH_SECRET) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  const { businessId, username } = await req.json();
+  const { businessId, username, message } = await req.json();
   if (!businessId || !username) {
     return NextResponse.json({ ok: false, error: "missing businessId/username" }, { status: 400 });
   }
 
   try {
-    // reuse your existing webhook code path
-    const payload = {
-      id: `evt_admin_test_${Date.now()}`,
-      type: "member.created",
-      data: {
-        business_id: businessId,
-        experience_id: "exp_admin_test",
-        member_id: `mem_admin_test_${Date.now()}`,
-        user: { username },
-      },
-    };
-
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://whop-dms.vercel.app';
-    const res = await fetch(`${baseUrl}/api/whop/webhook`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
+    const eventId = `admin_test_${Date.now()}`;
+    
+    // Use the existing sendWelcomeDM helper for end-to-end simulation
+    const result = await sendWelcomeDM({
+      businessId,
+      toUserIdOrUsername: username,
+      templateOverride: message, // Use custom message if provided
+      eventId,
+      context: "admin-test"
     });
 
-    const body = await res.json().catch(() => ({}));
-    logInfo("admin test webhook", { status: res.status, body });
+    logInfo("admin test webhook success", { 
+      eventId, 
+      username, 
+      businessId, 
+      result 
+    });
 
-    return NextResponse.json({ ok: res.ok, status: res.status, upstream: body });
+    return NextResponse.json({ 
+      ok: true, 
+      eventId, 
+      toUser: username 
+    });
   } catch (e: any) {
-    logError("admin test webhook error", { e: e?.message });
-    return NextResponse.json({ ok: false, error: e?.message || "error" }, { status: 500 });
+    logError("admin test webhook error", { 
+      error: e?.message,
+      businessId,
+      username 
+    });
+    return NextResponse.json({ 
+      ok: false, 
+      error: e?.message || "error" 
+    }, { status: 500 });
   }
 }
