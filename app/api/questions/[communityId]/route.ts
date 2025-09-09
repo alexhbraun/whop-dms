@@ -67,27 +67,17 @@ function mapRowToUI(row: any): UIQuestion {
 export async function GET(_req: Request, { params }: { params: { communityId: string } }) {
   const supabase = getServerSupabase();
   try {
-    console.log('[questions.GET] Starting query for communityId:', params.communityId);
-    
     const { data, error } = await supabase
       .from('onboarding_questions')
       .select('id, community_id, business_id, label, type, is_required, order_index, options, key_slug')
       .or(`business_id.eq.${params.communityId},community_id.eq.${params.communityId}`)
       .order('order_index', { ascending: true });
 
-    console.log('[questions.GET] Query result:', { 
-      communityId: params.communityId, 
-      error: error?.message, 
-      dataCount: data?.length || 0,
-      data: data 
-    });
-
     if (error) {
       console.warn('[questions.GET] soft-fail', { cid: params.communityId, msg: error.message });
       return NextResponse.json({ ok: true, items: [] });
     }
     const items = (data || []).map(mapRowToUI);
-    console.log('[questions.GET] Mapped items:', items);
     return NextResponse.json({ ok: true, items });
   } catch (e: any) {
     console.error('[questions.GET] hard error', e?.message);
