@@ -3,7 +3,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { getWhopSdk } from "@/lib/whop-sdk";
 import { sendWelcomeDM } from "@/lib/dm";
-import { getServiceDb } from "@/lib/db/client";
+import { getServiceClient } from "@/lib/supabase/service";
 import { getBaseUrl } from "@/lib/urls";
 import { DM_ENABLED } from "@/lib/feature-flags";
 import { hasSentForEvent } from "@/lib/dm-db";
@@ -35,19 +35,33 @@ export async function POST(req: NextRequest) {
     console.log(`[WHOP-WEBHOOK] Received event: ${payload.type} (${payload.id})`);
     console.log(`[WHOP-WEBHOOK] Event data:`, JSON.stringify(payload, null, 2));
 
-    // Immediately persist into webhook_events
+    // LOG FIRST - Immediately persist into webhook_events using service client
     try {
-      const db = getServiceDb();
+      const sb = getServiceClient();
       const communityId = payload.data?.community_id || payload.data?.business_id || payload.data?.company_id;
-      await db.from("webhook_events").insert({
-        event_type: payload.type || 'unknown',
+      
+      const webhookRow = {
+        id: payload?.id ?? crypto.randomUUID(),
+        event_type: payload?.type ?? 'unknown',
+        community_id: communityId,
+        payload: payload,
         received_at: new Date().toISOString(),
-        raw: payload,
-        business_id: communityId,
-        community_id: communityId
-      });
+      };
+
+      const { error } = await sb.from("webhook_events").insert(webhookRow);
+      
+      if (error) {
+        console.error("WEBHOOK_INSERT_FAIL", error);
+      } else {
+        console.log("WEBHOOK_HIT", { 
+          ts: Date.now(), 
+          event: payload?.type, 
+          communityId: communityId,
+          inserted: true 
+        });
+      }
     } catch (dbError) {
-      console.error("Failed to persist webhook event:", dbError);
+      console.error("WEBHOOK_INSERT_EXCEPTION", dbError);
       // Continue processing even if logging fails
     }
 
@@ -152,8 +166,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // For other event types, simply return success
-    return NextResponse.json({ ok: true, ignored: true });
+    // TEMPORARY FOR DEBUG: regardless of downstream logic, end the handler with debug return
+    return NextResponse.json({ ok: true, debug: 'logged-first' }, { status: 200 });
   } catch (error) {
     console.error("[WHOP-WEBHOOK] Unexpected error:", error);
     return NextResponse.json({ ok: false, error: "internal error" }, { status: 500 });

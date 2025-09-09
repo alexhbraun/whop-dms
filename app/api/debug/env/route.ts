@@ -1,20 +1,12 @@
-// app/api/debug/env/route.ts
-export const runtime = "nodejs";
-export const dynamic = 'force-dynamic';
-import { requireAdminSecret } from "@/lib/admin-auth";
+import { NextResponse } from 'next/server';
 
-export async function GET(req: Request) {
-  requireAdminSecret(req);
-  const raw = process.env.DM_ONBOARDING_ENABLED ?? "(undefined)";
-  const normalized = String(raw).toLowerCase().trim();
-  const enabled = normalized === "true";
-
-  return new Response(
-    JSON.stringify({
-      raw,
-      normalized,
-      enabled,
-    }),
-    { headers: { "Content-Type": "application/json" } }
-  );
+export async function GET() {
+  const urlOk = !!process.env.SUPABASE_URL;
+  const keyLen = process.env.SUPABASE_SERVICE_ROLE_KEY?.length || 0;
+  return NextResponse.json({
+    ok: urlOk && keyLen > 25,
+    supabaseUrl: urlOk ? 'set' : 'missing',
+    serviceKeyLen: keyLen,                // length only (safe to print)
+    dmOnboardingEnabled: process.env.DM_ONBOARDING_ENABLED ?? null,
+  });
 }
