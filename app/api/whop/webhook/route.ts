@@ -19,10 +19,13 @@ type MemberCreated = {
   id: string;
   type: "member.created" | "membership_went_valid";
   data: {
-    business_id: string;
+    business_id?: string;
+    company_id?: string;
     experience_id?: string;
-    member_id: string;
+    member_id?: string;
+    membership_id?: string;
     user?: { id?: string; username?: string };
+    member?: { id?: string; username?: string };
   };
 };
 
@@ -49,24 +52,44 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, note: "already processed" });
     }
 
-    const { business_id, experience_id, member_id } = event.data;
-
     // Handle member.created events OR membership_went_valid events
     if (event.type === "member.created" || event.type === "membership_went_valid") {
+      console.log(`[WHOP-WEBHOOK] Processing ${event.type} event:`, JSON.stringify(event, null, 2));
+      
       const already = await hasSentForEvent(event.id);
       if (already) {
         console.log(`[WHOP-WEBHOOK] Event ${event.id} already processed, skipping`);
         return NextResponse.json({ ok: true, skipped: "duplicate_event_id" });
       }
 
-      const rawUser = event.data?.user || {};
+      // Extract data - membership_went_valid might have different structure
+      const business_id = event.data?.business_id || event.data?.company_id;
+      const experience_id = event.data?.experience_id;
+      const member_id = event.data?.member_id || event.data?.membership_id;
+      
+      console.log(`[WHOP-WEBHOOK] Extracted data:`, { business_id, experience_id, member_id });
+
+      const rawUser = event.data?.user || event.data?.member || {};
       const recipient =
         (rawUser.username ?? "").toString().trim() ||
         (rawUser.id ?? "").toString().trim();
 
+      console.log(`[WHOP-WEBHOOK] User data:`, rawUser);
+      console.log(`[WHOP-WEBHOOK] Recipient:`, recipient);
+
       if (!recipient) {
         console.log(`[WHOP-WEBHOOK] No recipient found for event ${event.id}`);
         return NextResponse.json({ ok: true, note: "no recipient" });
+      }
+
+      if (!business_id) {
+        console.log(`[WHOP-WEBHOOK] No business_id found for event ${event.id}`);
+        return NextResponse.json({ ok: true, note: "no business_id" });
+      }
+
+      if (!member_id) {
+        console.log(`[WHOP-WEBHOOK] No member_id found for event ${event.id}`);
+        return NextResponse.json({ ok: true, note: "no member_id" });
       }
 
       if (!DM_ENABLED) {
