@@ -6,6 +6,13 @@ export const runtime = "nodejs";
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
+  // Debug headers
+  console.log("Headers keys:", Object.keys(req.headers));
+  console.log("x-admin-secret:", req.headers.get("x-admin-secret"));
+  console.log("x-admin-dash-secret:", req.headers.get("x-admin-dash-secret"));
+  
+  return NextResponse.json({ ok: false, probe: true });
+  
   const secret = req.headers.get("x-admin-secret");
   if (!secret || secret !== process.env.NEXT_PUBLIC_ADMIN_DASH_SECRET) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
