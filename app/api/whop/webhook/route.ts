@@ -28,9 +28,13 @@ type MemberCreated = {
 
 export async function POST(req: NextRequest) {
   try {
+    console.log(`[WHOP-WEBHOOK] Webhook called at ${new Date().toISOString()}`);
+    console.log(`[WHOP-WEBHOOK] Headers:`, Object.fromEntries(req.headers.entries()));
+    
     const event = (await req.json()) as MemberCreated;
     
     console.log(`[WHOP-WEBHOOK] Received event: ${event.type} (${event.id})`);
+    console.log(`[WHOP-WEBHOOK] Event data:`, JSON.stringify(event, null, 2));
 
     // Idempotency check
     const supabase = getSupabaseClient();
