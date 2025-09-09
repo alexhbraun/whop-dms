@@ -39,8 +39,8 @@ export async function POST(req: Request) {
       }
     };
 
-    // Call our own webhook endpoint
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/whop/webhook`, {
+    // Call our own webhook endpoint using relative URL
+    const response = await fetch('/api/whop/webhook', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
