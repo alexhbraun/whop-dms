@@ -26,7 +26,7 @@ export async function POST(req: Request) {
       toUserIdOrUsername: username,
       templateOverride: message, // Use custom message if provided
       eventId,
-      context: "admin-test"
+      context: "debug"
     });
 
     logInfo("admin test webhook success", { 
