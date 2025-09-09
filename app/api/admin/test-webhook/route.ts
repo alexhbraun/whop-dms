@@ -27,22 +27,27 @@ export async function GET(req: Request) {
     haveEnv: Boolean(env),
     haveHeader: Boolean(supplied),
     match: Boolean(env && supplied && env === supplied),
-    diag: {
-      envLen: env.length,
-      hdrLen: supplied.length,
-      envHash: env ? sha256Base64(env) : null,
-      hdrHash: supplied ? sha256Base64(supplied) : null,
-    },
-    note: "Hashes and lengths only; no secret values returned.",
+    diag: { envLen: env.length, hdrLen: supplied.length, envHash: env ? sha256Base64(env) : null, hdrHash: supplied ? sha256Base64(supplied) : null },
   });
 }
 
 export async function POST(req: Request) {
   const supplied = getIncomingSecret(req);
   const env = (process.env.ADMIN_DASH_SECRET || "").trim();
-  
-  if (!env || !supplied || env !== supplied) {
-    return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), { status: 401 });
+  const authorized = Boolean(env && supplied && env === supplied);
+  if (!authorized) {
+    return new Response(JSON.stringify({
+      ok: false,
+      error: "unauthorized",
+      diag: {
+        haveEnv: Boolean(env),
+        haveHeader: Boolean(supplied),
+        envLen: env.length,
+        hdrLen: supplied.length,
+        envHash: env ? sha256Base64(env) : null,
+        hdrHash: supplied ? sha256Base64(supplied) : null
+      }
+    }), { status: 401, headers: { "content-type": "application/json" }});
   }
 
   const { businessId, username, message } = await req.json();
