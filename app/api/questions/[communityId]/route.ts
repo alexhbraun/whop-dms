@@ -67,17 +67,27 @@ function mapRowToUI(row: any): UIQuestion {
 export async function GET(_req: Request, { params }: { params: { communityId: string } }) {
   const supabase = getServerSupabase();
   try {
+    console.log('[questions.GET] Starting query for communityId:', params.communityId);
+    
     const { data, error } = await supabase
       .from('onboarding_questions')
       .select('id, community_id, business_id, label, type, is_required, order_index, options, key_slug')
       .or(`business_id.eq.${params.communityId},community_id.eq.${params.communityId}`)
       .order('order_index', { ascending: true });
 
+    console.log('[questions.GET] Query result:', { 
+      communityId: params.communityId, 
+      error: error?.message, 
+      dataCount: data?.length || 0,
+      data: data 
+    });
+
     if (error) {
       console.warn('[questions.GET] soft-fail', { cid: params.communityId, msg: error.message });
       return NextResponse.json({ ok: true, items: [] });
     }
     const items = (data || []).map(mapRowToUI);
+    console.log('[questions.GET] Mapped items:', items);
     return NextResponse.json({ ok: true, items });
   } catch (e: any) {
     console.error('[questions.GET] hard error', e?.message);
@@ -90,6 +100,8 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
   try {
     const body = await req.json().catch(() => ({}));
     const list: UIQuestion[] = Array.isArray(body?.items) ? body.items : [];
+    console.log('[questions.PUT] Starting save for communityId:', params.communityId, 'items:', list.length);
+    
     if (!list.length) return NextResponse.json({ ok: false, error: 'No questions provided' });
 
     // Separate new questions from existing ones
@@ -172,6 +184,11 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
     }
 
     const items = (after || []).map(mapRowToUI);
+    console.log('[questions.PUT] Final result:', { 
+      communityId: params.communityId, 
+      itemsCount: items.length,
+      items: items 
+    });
     return NextResponse.json({ ok: true, items });
   } catch (e: any) {
     console.error('[questions.PUT] hard error', e?.message);
