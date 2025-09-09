@@ -45,8 +45,8 @@ export async function GET(_req: Request, { params }: { params: { communityId: st
   try {
     const { data, error } = await supabase
       .from('onboarding_questions')
-      .select('id, community_id, label, type, is_required, order_index, options, key_slug')
-      .eq('community_id', params.communityId)
+      .select('id, business_id, label, type, is_required, order_index, options, key_slug')
+      .eq('business_id', params.communityId)
       .order('order_index', { ascending: true });
 
     if (error) {
@@ -79,11 +79,11 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
         const text = (q.text || '').trim();
         if (!text) throw new Error('Each question needs text');
         const pos = Number.isFinite(q.position) ? q.position : i;
-        const key_slug = (q.key_slug && q.key_slug.trim()) || slugify(text) || `q_${i}`;
+        const key_slug = (q.key_slug && q.key_slug.trim()) || slugify(text) || `q_${pos}`;
         
         return {
           id: q.id,
-          community_id: params.communityId,
+          business_id: params.communityId,
           key_slug,
           label: text,
           type: q.type || 'text',
@@ -109,10 +109,10 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
         const text = (q.text || '').trim();
         if (!text) throw new Error('Each question needs text');
         const pos = Number.isFinite(q.position) ? q.position : i;
-        const key_slug = (q.key_slug && q.key_slug.trim()) || slugify(text) || `q_${i}`;
+        const key_slug = (q.key_slug && q.key_slug.trim()) || slugify(text) || `q_${pos}`;
         
         return {
-          community_id: params.communityId,
+          business_id: params.communityId,
           key_slug,
           label: text,
           type: q.type || 'text',
@@ -135,8 +135,8 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
     // No destructive delete. Now return canonical rows:
     const { data: after, error: afterErr } = await supabase
       .from('onboarding_questions')
-      .select('id, community_id, label, type, is_required, order_index, options, key_slug')
-      .eq('community_id', params.communityId)
+      .select('id, business_id, label, type, is_required, order_index, options, key_slug')
+      .eq('business_id', params.communityId)
       .order('order_index', { ascending: true });
 
     if (afterErr) {
