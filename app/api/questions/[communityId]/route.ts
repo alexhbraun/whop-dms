@@ -31,7 +31,7 @@ async function generateUniqueKeySlug(supabase: any, businessId: string, text: st
     const { data } = await supabase
       .from('onboarding_questions')
       .select('id')
-      .eq('business_id', businessId)
+      .eq('community_id', businessId)
       .eq('key_slug', keySlug)
       .maybeSingle();
     
@@ -150,7 +150,8 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
 
       const { error: insertErr } = await supabase
         .from('onboarding_questions')
-        .insert(insertPayload);
+        // Upsert on the unique pair to avoid duplicate key errors when the slug already exists
+        .upsert(insertPayload, { onConflict: 'community_id, key_slug' });
 
       if (insertErr) {
         console.error('[questions.PUT] insert error', insertErr.message);
