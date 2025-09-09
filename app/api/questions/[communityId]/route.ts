@@ -20,6 +20,30 @@ function slugify(s?: string) {
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
 }
+
+// Generate a unique key_slug for the given business
+async function generateUniqueKeySlug(supabase: any, businessId: string, text: string, position: number): Promise<string> {
+  const baseSlug = slugify(text) || `q_${position}`;
+  let keySlug = baseSlug;
+  let counter = 0;
+  
+  while (true) {
+    const { data } = await supabase
+      .from('onboarding_questions')
+      .select('id')
+      .eq('business_id', businessId)
+      .eq('key_slug', keySlug)
+      .maybeSingle();
+    
+    if (!data) {
+      return keySlug; // This key_slug is available
+    }
+    
+    // Try with a counter suffix
+    counter++;
+    keySlug = `${baseSlug}_${counter}`;
+  }
+}
 function optionsToTextArray(opts?: UIOption[]): string[] {
   if (!Array.isArray(opts)) return [];
   return opts.map(o => String(o?.value ?? o?.label ?? '').trim()).filter(Boolean);
@@ -75,11 +99,11 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
 
     // Handle existing questions (update)
     if (existingQuestions.length > 0) {
-      const updatePayload = existingQuestions.map((q, i) => {
+      const updatePayload = await Promise.all(existingQuestions.map(async (q, i) => {
         const text = (q.text || '').trim();
         if (!text) throw new Error('Each question needs text');
         const pos = Number.isFinite(q.position) ? q.position : i;
-        const key_slug = (q.key_slug && q.key_slug.trim()) || slugify(text) || `q_${pos}`;
+        const key_slug = (q.key_slug && q.key_slug.trim()) || await generateUniqueKeySlug(supabase, params.communityId, text, pos);
         
         return {
           id: q.id,
@@ -91,7 +115,7 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
           order_index: pos,
           options: optionsToTextArray(q.options),
         };
-      });
+      }));
 
       const { error: updateErr } = await supabase
         .from('onboarding_questions')
@@ -105,11 +129,11 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
 
     // Handle new questions (insert)
     if (newQuestions.length > 0) {
-      const insertPayload = newQuestions.map((q, i) => {
+      const insertPayload = await Promise.all(newQuestions.map(async (q, i) => {
         const text = (q.text || '').trim();
         if (!text) throw new Error('Each question needs text');
         const pos = Number.isFinite(q.position) ? q.position : i;
-        const key_slug = (q.key_slug && q.key_slug.trim()) || slugify(text) || `q_${pos}`;
+        const key_slug = (q.key_slug && q.key_slug.trim()) || await generateUniqueKeySlug(supabase, params.communityId, text, pos);
         
         return {
           business_id: params.communityId,
@@ -120,7 +144,7 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
           order_index: pos,
           options: optionsToTextArray(q.options),
         };
-      });
+      }));
 
       const { error: insertErr } = await supabase
         .from('onboarding_questions')
