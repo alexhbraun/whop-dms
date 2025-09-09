@@ -1,13 +1,18 @@
 import { getWhopSdkWithAgent } from "@/lib/whop-sdk";
 import { getTemplateForBusiness } from "@/lib/db/templates";
-import { createClient } from "@supabase/supabase-js";
+import { getServiceDb } from "@/lib/db/client";
 import { logInfo, logError } from "@/lib/log";
 
-function getSupabaseClient() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-}
-
 // Removed hardcoded env vars - now using getAgentAndCompany()
+
+interface SendOpts {
+  businessId: string
+  toUser: { username?: string; id?: string }     // at least one required
+  message: string
+  eventId: string                                // caller provides
+  source: 'admin' | 'webhook' | 'debug'
+  templateId?: string | null
+}
 
 type SendParams = {
   businessId: string;                // new
@@ -21,6 +26,69 @@ type SendParams = {
 
 function clean(s?: string | null) {
   return (s ?? "").toString().trim();
+}
+
+export async function sendAndLogDM(opts: SendOpts): Promise<{ ok: boolean; status: string; error?: string }> {
+  const { businessId, toUser, message, eventId, source, templateId } = opts;
+  
+  // Determine toUser label (username ?? id)
+  const toUserLabel = toUser.username || toUser.id;
+  if (!toUserLabel) {
+    throw new Error("Either username or id must be provided in toUser");
+  }
+
+  let status: "sent" | "failed" = "sent";
+  let error: string | null = null;
+
+  try {
+    const whop = getWhopSdkWithAgent();
+    
+    // Send the DM
+    await whop.messages.sendDirectMessageToUser({
+      toUserIdOrUsername: toUserLabel,
+      message,
+    });
+    
+    logInfo("dm.send.ok", { 
+      businessId, 
+      toUser: toUserLabel, 
+      eventId, 
+      source 
+    });
+  } catch (e: any) {
+    status = "failed";
+    error = e?.message ?? String(e);
+    logError("dm.send.fail", { 
+      businessId, 
+      toUser: toUserLabel, 
+      eventId, 
+      source,
+      error: e?.message 
+    });
+  }
+
+  // Log to database
+  try {
+    const db = getServiceDb();
+    const preview = message.slice(0, 140);
+    
+    await db.from("dm_send_log").insert({
+      event_id: eventId,
+      business_id: businessId,
+      to_user: toUserLabel,
+      status,
+      error,
+      message_preview: preview,
+      template_id: templateId,
+      source,
+      created_at: new Date().toISOString()
+    });
+  } catch (dbError) {
+    console.error("Failed to log DM to database:", dbError);
+    // Don't throw - we still want HTTP 200 for admin tester
+  }
+
+  return { ok: status === "sent", status, error: error || undefined };
 }
 
 export async function sendWelcomeDM(params: SendParams) {
@@ -42,64 +110,26 @@ export async function sendWelcomeDM(params: SendParams) {
   }
   
   const message = (messageOverride ?? tmpl?.message_body ?? "Welcome to the community!");
+  const templateId = tmpl?.id ?? null;
+  const finalEventId = eventId || `debug_${Date.now()}`;
 
-  // Try sending
-  let status: "sent" | "failed" = "sent";
-  let error: string | null = null;
-  let templateId: string | null = tmpl?.id ?? null;
+  // Use the new sendAndLogDM function
+  const result = await sendAndLogDM({
+    businessId,
+    toUser: { username: recipient, id: undefined }, // Assume username for backward compatibility
+    message,
+    eventId: finalEventId,
+    source: context === "onboarding" ? "webhook" : "debug",
+    templateId
+  });
 
-  logInfo("dm.send.attempt", { 
-    businessId, 
-    toUser: recipient, 
+  return { 
+    ok: result.ok, 
+    status: result.status, 
+    error: result.error, 
     templateId, 
-    eventId, 
-    context 
-  });
-
-  try {
-    const whop = getWhopSdkWithAgent();
-    
-    // Use withUser() to set x-on-behalf-of header for DM sending
-    await whop.messages.sendDirectMessageToUser({
-      toUserIdOrUsername: recipient,
-      message,
-    });
-    
-    logInfo("dm.send.ok", { 
-      businessId, 
-      toUser: recipient, 
-      templateId, 
-      eventId, 
-      context 
-    });
-  } catch (e: any) {
-    status = "failed";
-    error = e?.message ?? String(e);
-    logError("dm.send.fail", { 
-      businessId, 
-      toUser: recipient, 
-      templateId, 
-      eventId, 
-      context,
-      error: e?.message 
-    });
-  }
-
-  // Log with richer context including context field
-  const preview = message.slice(0, 140);
-  const supabase = getSupabaseClient();
-  await supabase.from("dm_send_log").insert({
-    event_id: eventId || `debug_${Date.now()}`,
-    to_user: toUserIdOrUsername,
-    status,
-    error,
-    message_preview: preview,
-    business_id: businessId,
-    template_id: templateId,
-    context: context  // NEW: distinguish between onboarding and debug
-  });
-
-  return { ok: status === "sent", status, error, templateId, businessId };
+    businessId 
+  };
 }
 
 

@@ -1,6 +1,6 @@
 // app/api/admin/test-webhook/route.ts
 import { NextResponse } from "next/server";
-import { sendWelcomeDM } from '@/lib/dm';
+import { sendAndLogDM } from '@/lib/dm';
 
 export const runtime = "nodejs";
 export const dynamic = 'force-dynamic';
@@ -12,14 +12,18 @@ function checkSecret(req: Request): { ok: boolean; error?: string; status?: numb
     return { ok: false, error: "ADMIN_DASH_SECRET not set", status: 500 };
   }
   
+  // Check header first, then query param
+  const headerSecret = req.headers.get("x-admin-secret");
   const url = new URL(req.url);
   const querySecret = url.searchParams.get("secret");
   
-  if (!querySecret) {
+  const providedSecret = headerSecret || querySecret;
+  
+  if (!providedSecret) {
     return { ok: false, error: "unauthorized", status: 401 };
   }
   
-  if (envSecret.trim() !== querySecret.trim()) {
+  if (envSecret.trim() !== providedSecret.trim()) {
     return { ok: false, error: "unauthorized", status: 401 };
   }
   
@@ -41,7 +45,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
   }
 
-  const { businessId, username, userId, message, eventId, dryRun = false, templateOverride } = await req.json();
+  const { businessId, username, userId, message, dryRun = false } = await req.json();
   
   // Validate required fields
   if (!businessId) {
@@ -52,62 +56,51 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "username or userId is required" }, { status: 400 });
   }
 
+  // Generate eventId
+  const eventId = `admin_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+
   // Log request details (excluding secret)
   console.log("admin/test-webhook POST", {
     businessId,
     username,
     userId,
     eventId,
-    dryRun,
-    hasTemplateOverride: !!templateOverride
+    dryRun
   });
-
-  // Build toUser param - prefer userId if both present
-  const toUser = userId ? { id: userId } : { username };
-  const finalEventId = eventId || `admin_test_${Date.now()}`;
 
   if (dryRun === true) {
     return Response.json({
       ok: true,
-      mode: "dryRun",
+      mode: "dry",
       preview: {
         businessId,
-        toUser,
+        to: username || userId,
         message,
-        eventId: finalEventId,
-        templateOverride
+        eventId
       }
     });
   }
 
   // Real send
   try {
-    const result = await sendWelcomeDM({
+    const result = await sendAndLogDM({
       businessId,
-      toUser: toUser.id ? toUser.id : toUser.username,
-      customMessage: message,
-      templateOverride,
-      eventId: finalEventId
+      toUser: { username, id: userId },
+      message,
+      eventId,
+      source: 'admin'
     });
 
-    // Return only relevant fields
     return Response.json({
       ok: true,
-      mode: "send",
-      result: {
-        ok: result.ok,
-        status: result.status,
-        error: result.error,
-        templateId: result.templateId,
-        businessId: result.businessId
-      }
+      mode: "real",
+      result
     });
   } catch (err: any) {
     console.error("admin/test-webhook send error", { err });
-    return new Response(JSON.stringify({
+    return NextResponse.json({
       ok: false,
-      mode: "send",
       error: String(err?.message || err)
-    }), { status: 500, headers: { "content-type": "application/json" }});
+    }, { status: 500 });
   }
 }

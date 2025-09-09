@@ -2,23 +2,16 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getWhopSdk } from "@/lib/whop-sdk";
-import { sendWelcomeDM } from "@/lib/dm";
-import { createClient } from "@supabase/supabase-js";
+import { sendAndLogDM } from "@/lib/dm";
+import { getServiceDb } from "@/lib/db/client";
 import { getBaseUrl } from "@/lib/urls";
 import { DM_ENABLED } from "@/lib/feature-flags";
 import { hasSentForEvent } from "@/lib/dm-db";
 import { logInfo, logError } from "@/lib/log";
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
-
-type MemberCreated = {
+type WebhookEvent = {
   id: string;
-  type: "member.created" | "membership_went_valid" | "membership_experience_claimed" | "membership.created" | "membership.experience_claimed";
+  type: string;
   data: {
     business_id?: string;
     company_id?: string;
@@ -33,46 +26,46 @@ type MemberCreated = {
 export async function POST(req: NextRequest) {
   try {
     console.log(`[WHOP-WEBHOOK] Webhook called at ${new Date().toISOString()}`);
-    console.log(`[WHOP-WEBHOOK] Headers:`, Object.fromEntries(req.headers.entries()));
     
-    const event = (await req.json()) as MemberCreated;
+    // Read raw JSON body as text, parse into payload
+    const rawBody = await req.text();
+    const payload = JSON.parse(rawBody) as WebhookEvent;
     
-    console.log(`[WHOP-WEBHOOK] Received event: ${event.type} (${event.id})`);
-    console.log(`[WHOP-WEBHOOK] Event data:`, JSON.stringify(event, null, 2));
+    console.log(`[WHOP-WEBHOOK] Received event: ${payload.type} (${payload.id})`);
+    console.log(`[WHOP-WEBHOOK] Event data:`, JSON.stringify(payload, null, 2));
 
-    // Idempotency check
-    const supabase = getSupabaseClient();
-    const { data: existing } = await supabase
-      .from("dm_send_log")
-      .select("id")
-      .eq("event_id", event.id)
-      .maybeSingle();
-
-    if (existing) {
-      console.log(`[WHOP-WEBHOOK] Event ${event.id} already processed, skipping`);
-      return NextResponse.json({ ok: true, note: "already processed" });
+    // Immediately persist into webhook_events
+    try {
+      const db = getServiceDb();
+      await db.from("webhook_events").insert({
+        event_type: payload.type || 'unknown',
+        received_at: new Date().toISOString(),
+        raw: payload,
+        business_id: payload.data?.business_id || payload.data?.company_id
+      });
+    } catch (dbError) {
+      console.error("Failed to persist webhook event:", dbError);
+      // Continue processing even if logging fails
     }
 
-    // Handle member.created events OR membership events
-    const isOnboardingEvent = event.type === "member.created" || 
-                             event.type === "membership_went_valid" || 
-                             event.type === "membership_experience_claimed" ||
-                             event.type === "membership.created" || 
-                             event.type === "membership.experience_claimed";
+    // Handle specific event types
+    const isOnboardingEvent = payload.type === "membership_experience_claimed" || 
+                             payload.type === "membership_went_valid" || 
+                             payload.type === "app_membership_went_valid";
     
     if (isOnboardingEvent) {
       logInfo("dm.onboarding.trigger", { 
-        eventType: event.type, 
-        eventId: event.id,
-        businessId: event.data?.business_id || event.data?.company_id 
+        eventType: payload.type, 
+        eventId: payload.id,
+        businessId: payload.data?.business_id || payload.data?.company_id 
       });
       
-      const already = await hasSentForEvent(event.id);
+      const already = await hasSentForEvent(payload.id);
       if (already) {
         logInfo("dm.onboarding.skip", { 
           reason: "already_processed", 
-          eventType: event.type,
-          eventId: event.id 
+          eventType: payload.type,
+          eventId: payload.id 
         });
         return NextResponse.json({ ok: true, skipped: "duplicate_event_id" });
       }
@@ -81,179 +74,83 @@ export async function POST(req: NextRequest) {
       if (!DM_ENABLED) {
         logInfo("dm.onboarding.skip", { 
           reason: "flag_disabled", 
-          eventType: event.type,
-          eventId: event.id 
+          eventType: payload.type,
+          eventId: payload.id 
         });
         return NextResponse.json({ ok: true, note: "DM disabled by flag" });
       }
 
-      // Extract data - different events might have different structures
-      const business_id = event.data?.business_id || event.data?.company_id;
-      const experience_id = event.data?.experience_id;
-      const member_id = event.data?.member_id || event.data?.membership_id;
+      // Extract data
+      const businessId = payload.data?.business_id || payload.data?.company_id;
+      const memberId = payload.data?.member_id || payload.data?.membership_id;
       
-      const rawUser = event.data?.user || event.data?.member || {};
-      const recipient =
-        (rawUser.username ?? "").toString().trim() ||
-        (rawUser.id ?? "").toString().trim();
+      const rawUser = payload.data?.user || payload.data?.member || {};
+      const username = rawUser.username?.toString().trim();
+      const userId = rawUser.id?.toString().trim();
 
-      if (!recipient) {
+      if (!username && !userId) {
         logError("dm.onboarding.no_recipient", { 
-          eventType: event.type,
-          eventId: event.id,
-          businessId: business_id 
+          eventType: payload.type,
+          eventId: payload.id,
+          businessId 
         });
         return NextResponse.json({ ok: true, note: "no recipient" });
       }
 
-      if (!business_id) {
+      if (!businessId) {
         logError("dm.onboarding.no_business_id", { 
-          eventType: event.type,
-          eventId: event.id 
+          eventType: payload.type,
+          eventId: payload.id 
         });
         return NextResponse.json({ ok: true, note: "no business_id" });
       }
 
-      if (!member_id) {
+      if (!memberId) {
         logError("dm.onboarding.no_member_id", { 
-          eventType: event.type,
-          eventId: event.id,
-          businessId: business_id 
+          eventType: payload.type,
+          eventId: payload.id,
+          businessId 
         });
         return NextResponse.json({ ok: true, note: "no member_id" });
       }
 
       try {
-        const result = await sendWelcomeDM({
-          businessId: business_id,
-          toUserIdOrUsername: recipient,
-          templateOverride: buildWelcomeDm({ business_id, member_id }),
-          eventId: event.id,
-          context: "onboarding"
+        // Build welcome message
+        const baseUrl = getBaseUrl();
+        const onboardingUrl = `${baseUrl}/onboarding/${businessId}?member=${memberId}`;
+        const message = `🎉 Welcome to the community! Complete your onboarding here: ${onboardingUrl}`;
+
+        // Send DM using new sendAndLogDM function
+        const result = await sendAndLogDM({
+          businessId,
+          toUser: { username, id: userId },
+          message,
+          eventId: payload.id || `webhook_${Date.now()}`,
+          source: 'webhook'
         });
         
         logInfo("dm.onboarding.success", { 
-          eventType: event.type,
-          eventId: event.id,
-          businessId: business_id,
-          userId: recipient,
+          eventType: payload.type,
+          eventId: payload.id,
+          businessId,
           result 
         });
         return NextResponse.json({ ok: true, result });
       } catch (e: any) {
         logError("dm.onboarding.failed", { 
-          eventType: event.type,
-          eventId: event.id,
-          businessId: business_id,
-          userId: recipient,
+          eventType: payload.type,
+          eventId: payload.id,
+          businessId,
           error: e?.message 
         });
         return NextResponse.json({ ok: true, error: "send failed" });
       }
     }
 
-    // Legacy handling for other event types (if any)
-    return NextResponse.json({ ok: true, note: "event type not handled" });
+    // For other event types, simply return success
+    return NextResponse.json({ ok: true, ignored: true });
   } catch (error) {
     console.error("[WHOP-WEBHOOK] Unexpected error:", error);
     return NextResponse.json({ ok: false, error: "internal error" }, { status: 500 });
   }
-}
-
-function buildWelcomeDm({ business_id, member_id }: { business_id: string; member_id: string }) {
-  const baseUrl = getBaseUrl();
-  const onboardingUrl = `${baseUrl}/onboarding/${business_id}?member=${member_id}`;
-  
-  return `🎉 Welcome to the community! Complete your onboarding here: ${onboardingUrl}`;
-}
-
-async function lookupCachedUser(business_id: string, member_id: string) {
-  const supabase = getSupabaseClient();
-  const { data } = await supabase
-    .from("user_identity_map")
-    .select("user_id, username")
-    .eq("business_id", business_id)
-    .eq("member_id", member_id)
-    .maybeSingle();
-  
-  return data?.user_id ?? data?.username ?? null;
-}
-
-async function cacheUser(business_id: string, member_id: string, toUser: string) {
-  const supabase = getSupabaseClient();
-  const patch = toUser.startsWith("user_")
-    ? { user_id: toUser, username: null }
-    : { user_id: null, username: toUser };
-
-  await supabase
-    .from("user_identity_map")
-    .upsert(
-      { business_id, member_id, ...patch },
-      { onConflict: "business_id,member_id" }
-    );
-}
-
-async function lookupViaExperience(experience_id: string, member_id: string) {
-  try {
-    const whop = getWhopSdk();
-    const result = await whop.experiences.listUsersForExperience({
-      experienceId: experience_id,
-      searchQuery: member_id, // heuristic: try member_id
-      first: 5,
-    });
-    
-    const node = result?.users?.nodes?.[0];
-    return node?.id ?? node?.username ?? null;
-    } catch (error) {
-    console.warn(`[WHOP-WEBHOOK] Failed to lookup user via experience ${experience_id}:`, error);
-    return null;
-  }
-}
-
-async function log(
-  event_id: string,
-  business_id: string,
-  to_user: string,
-  status: string,
-  message_preview?: string,
-  error?: string
-) {
-  const supabase = getSupabaseClient();
-  await supabase.from("dm_send_log").insert({
-    event_id,
-    business_id,
-    to_user,
-    status,
-    message_preview: message_preview?.slice(0, 240),
-    error,
-  });
-}
-
-async function logDm({
-  event_id,
-  business_id,
-  to_user,
-  status,
-  error,
-  message_preview,
-  template_id,
-}: {
-  event_id: string;
-  business_id: string;
-  to_user: string;
-  status: string;
-  error?: string | null;
-  message_preview?: string;
-  template_id?: string | null;
-}) {
-  const supabase = getSupabaseClient();
-  await supabase.from("dm_send_log").insert({
-    event_id,
-    business_id,
-    to_user,
-    status,
-    message_preview: message_preview?.slice(0, 240),
-    error,
-    template_id,
-  });
 }
