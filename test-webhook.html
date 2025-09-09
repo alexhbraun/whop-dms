@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Webhook Test</title>
+</head>
+<body>
+    <h1>Webhook Test</h1>
+    <button onclick="testWebhook()">Test Webhook Endpoint</button>
+    <button onclick="testWebhookTest()">Test Webhook Test Endpoint</button>
+    <div id="result"></div>
+
+    <script>
+        async function testWebhook() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Testing main webhook...';
+            
+            try {
+                const response = await fetch('https://whop-dms.vercel.app/api/whop/webhook', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        id: 'test_123',
+                        type: 'member.created',
+                        data: {
+                            business_id: 'biz_ZeQXyckPafiuua',
+                            experience_id: 'exp_test',
+                            member_id: 'mem_test_123',
+                            user: { username: 'testuser' }
+                        }
+                    })
+                });
+                
+                const data = await response.json();
+                resultDiv.innerHTML = `<h3>Main Webhook Response:</h3><pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                resultDiv.innerHTML = `<h3>Main Webhook Error:</h3><pre>${error.message}</pre>`;
+            }
+        }
+
+        async function testWebhookTest() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Testing webhook test endpoint...';
+            
+            try {
+                const response = await fetch('https://whop-dms.vercel.app/api/whop/webhook-test', {
+                    method: 'GET'
+                });
+                
+                const data = await response.json();
+                resultDiv.innerHTML = `<h3>Webhook Test Response:</h3><pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                resultDiv.innerHTML = `<h3>Webhook Test Error:</h3><pre>${error.message}</pre>`;
+            }
+        }
+    </script>
+</body>
+</html>
