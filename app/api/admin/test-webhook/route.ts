@@ -2,51 +2,47 @@
 import { NextResponse } from "next/server";
 import { logInfo, logError } from "@/lib/log";
 import { sendWelcomeDM } from "@/lib/dm";
+import crypto from "crypto";
 
 export const runtime = "nodejs";
 export const dynamic = 'force-dynamic';
 
-function getAdminSecret(req: Request): string | null {
-  // Try headers first
-  const headerSecret1 = req.headers.get("x-admin-secret");
-  const headerSecret2 = req.headers.get("x-admin-dash-secret");
-  
-  // Try query param
-  const url = new URL(req.url);
-  const querySecret = url.searchParams.get("secret");
-  
-  // Return first non-empty value
-  return headerSecret1?.trim() || headerSecret2?.trim() || querySecret?.trim() || null;
+function getIncomingSecret(req: Request) {
+  const h = (name: string) => req.headers.get(name) || "";
+  const q = new URL(req.url).searchParams.get("secret") || "";
+  // Prefer header, fall back to query
+  return (h("x-admin-secret") || h("x-admin-dash-secret") || q).trim();
 }
 
-function checkAuth(req: Request): { ok: boolean; error?: string } {
-  const supplied = getAdminSecret(req);
-  const env = process.env.ADMIN_DASH_SECRET?.trim();
-  
-  if (!supplied || !env || supplied !== env) {
-    return { ok: false, error: "unauthorized" };
-  }
-  
-  return { ok: true };
+function sha256Base64(str: string) {
+  return crypto.createHash("sha256").update(str, "utf8").digest("base64");
 }
 
 export async function GET(req: Request) {
-  const supplied = getAdminSecret(req);
-  const env = process.env.ADMIN_DASH_SECRET?.trim();
+  const supplied = getIncomingSecret(req);
+  const env = (process.env.ADMIN_DASH_SECRET || "").trim();
   
-  return NextResponse.json({
+  return Response.json({
     ok: true,
     haveEnv: Boolean(env),
     haveHeader: Boolean(supplied),
-    match: Boolean(supplied && env && supplied === env),
-    note: "No secrets leaked; values trimmed before compare."
+    match: Boolean(env && supplied && env === supplied),
+    diag: {
+      envLen: env.length,
+      hdrLen: supplied.length,
+      envHash: env ? sha256Base64(env) : null,
+      hdrHash: supplied ? sha256Base64(supplied) : null,
+    },
+    note: "Hashes and lengths only; no secret values returned.",
   });
 }
 
 export async function POST(req: Request) {
-  const auth = checkAuth(req);
-  if (!auth.ok) {
-    return NextResponse.json({ ok: false, error: auth.error }, { status: 401 });
+  const supplied = getIncomingSecret(req);
+  const env = (process.env.ADMIN_DASH_SECRET || "").trim();
+  
+  if (!env || !supplied || env !== supplied) {
+    return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), { status: 401 });
   }
 
   const { businessId, username, message } = await req.json();
