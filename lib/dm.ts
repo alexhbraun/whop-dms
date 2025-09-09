@@ -11,8 +11,10 @@ function getSupabaseClient() {
 
 type SendParams = {
   businessId: string;                // new
-  toUserIdOrUsername: string;        // "user_..." or "username"
-  templateOverride?: string;         // optional direct message body override
+  toUser?: string;                   // "user_..." or "username" (renamed for compatibility)
+  toUserIdOrUsername?: string;       // "user_..." or "username" (keep for backward compatibility)
+  customMessage?: string;            // optional direct message body override (renamed for compatibility)
+  templateOverride?: string;         // optional direct message body override (keep for backward compatibility)
   eventId?: string;                  // optional event ID for logging
   context?: "onboarding" | "debug";  // context for logging
 };
@@ -22,23 +24,24 @@ function clean(s?: string | null) {
 }
 
 export async function sendWelcomeDM(params: SendParams) {
-  const { businessId, toUserIdOrUsername, templateOverride, eventId, context = "debug" } = params;
-  const recipient = clean(toUserIdOrUsername);
+  const { businessId, toUser, toUserIdOrUsername, customMessage, templateOverride, eventId, context = "debug" } = params;
+  const recipient = clean(toUser || toUserIdOrUsername);
+  const messageOverride = customMessage || templateOverride;
 
   if (!recipient) {
-    throw new Error("Recipient is empty: toUserIdOrUsername was falsy/blank.");
+    throw new Error("Recipient is empty: toUser or toUserIdOrUsername must be provided.");
   }
 
   // Select template scoped by business (fallback to global)
   const tmpl = await getTemplateForBusiness(businessId);
   
   // Check if template exists for business
-  if (!tmpl && !templateOverride) {
+  if (!tmpl && !messageOverride) {
     logError("dm.onboarding.no_template", { businessId, userId: recipient, eventId });
     throw new Error(`No template found for business ${businessId}`);
   }
   
-  const message = (templateOverride ?? tmpl?.message_body ?? "Welcome to the community!");
+  const message = (messageOverride ?? tmpl?.message_body ?? "Welcome to the community!");
 
   // Try sending
   let status: "sent" | "failed" = "sent";

@@ -7,6 +7,8 @@ import crypto from "crypto";
 export const runtime = "nodejs";
 export const dynamic = 'force-dynamic';
 
+const OPEN = process.env.ADMIN_TEST_OPEN === 'true';
+
 function getIncomingSecret(req: Request) {
   const h = (name: string) => req.headers.get(name) || "";
   const q = new URL(req.url).searchParams.get("secret") || "";
@@ -19,6 +21,30 @@ function sha256Base64(str: string) {
 }
 
 export async function GET(req: Request) {
+  const url = new URL(req.url);
+  
+  // Probe mode
+  if (url.searchParams.get('probe') === '1') {
+    return Response.json({
+      ok: true,
+      open: OPEN,
+      hasSecret: !!process.env.ADMIN_DASH_SECRET
+    });
+  }
+  
+  // Secret check mode
+  const secretParam = url.searchParams.get('secret');
+  if (secretParam) {
+    const env = (process.env.ADMIN_DASH_SECRET || "").trim();
+    return Response.json({
+      ok: true,
+      match: env === secretParam.trim(),
+      haveEnv: !!env,
+      haveParam: true
+    });
+  }
+  
+  // Default behavior
   const supplied = getIncomingSecret(req);
   const env = (process.env.ADMIN_DASH_SECRET || "").trim();
   
@@ -32,62 +58,84 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const supplied = getIncomingSecret(req);
-  const env = (process.env.ADMIN_DASH_SECRET || "").trim();
-  const authorized = Boolean(env && supplied && env === supplied);
-  if (!authorized) {
-    return new Response(JSON.stringify({
-      ok: false,
-      error: "unauthorized",
-      diag: {
-        haveEnv: Boolean(env),
-        haveHeader: Boolean(supplied),
-        envLen: env.length,
-        hdrLen: supplied.length,
-        envHash: env ? sha256Base64(env) : null,
-        hdrHash: supplied ? sha256Base64(supplied) : null
-      }
-    }), { status: 401, headers: { "content-type": "application/json" }});
-  }
-
   const { businessId, username, message } = await req.json();
   if (!businessId || !username) {
     return NextResponse.json({ ok: false, error: "missing businessId/username" }, { status: 400 });
   }
 
-  try {
-    const eventId = `admin_test_${Date.now()}`;
+  if (OPEN) {
+    // Open mode - skip auth checks
+    try {
+      const eventId = `test_webhook_${Date.now()}`;
+      
+      await sendWelcomeDM({
+        businessId,
+        toUser: username,
+        customMessage: message,
+        eventId
+      });
+
+      return NextResponse.json({ 
+        ok: true, 
+        mode: 'open', 
+        businessId, 
+        username 
+      });
+    } catch (e: any) {
+      logError("admin test webhook open mode error", { 
+        error: e?.message,
+        businessId,
+        username 
+      });
+      return NextResponse.json({ 
+        ok: false, 
+        error: e?.message || "error" 
+      }, { status: 500 });
+    }
+  } else {
+    // Secured mode - check auth
+    const reqHeader = req.headers.get("x-admin-secret");
+    const env = process.env.ADMIN_DASH_SECRET;
     
-    // Use the existing sendWelcomeDM helper for end-to-end simulation
-    const result = await sendWelcomeDM({
-      businessId,
-      toUserIdOrUsername: username,
-      templateOverride: message, // Use custom message if provided
-      eventId,
-      context: "debug"
-    });
+    if (!env || !reqHeader || env !== reqHeader) {
+      return NextResponse.json({ 
+        ok: false, 
+        error: 'unauthorized', 
+        diag: { 
+          haveEnv: !!env, 
+          haveHeader: !!reqHeader, 
+          envLen: (env || '').length, 
+          hdrLen: (reqHeader || '').length 
+        } 
+      }, { status: 401 });
+    }
 
-    logInfo("admin test webhook success", { 
-      eventId, 
-      username, 
-      businessId, 
-      result 
-    });
+    try {
+      const eventId = `admin_test_${Date.now()}`;
+      
+      await sendWelcomeDM({
+        businessId,
+        toUser: username,
+        customMessage: message,
+        eventId
+      });
 
-    return NextResponse.json({ 
-      ok: true, 
-      eventId, 
-      toUser: username 
-    });
-  } catch (e: any) {
-    logError("admin test webhook error", { 
-      error: e?.message,
-      businessId,
-      username 
-    });
-    return NextResponse.json({ 
-      ok: false, 
-      error: e?.message || "error" 
-    }, { status: 500 });
+      return NextResponse.json({ 
+        ok: true, 
+        mode: 'secured', 
+        businessId, 
+        username 
+      });
+    } catch (e: any) {
+      logError("admin test webhook secured mode error", { 
+        error: e?.message,
+        businessId,
+        username 
+      });
+      return NextResponse.json({ 
+        ok: false, 
+        error: e?.message || "error" 
+      }, { status: 500 });
+    }
   }
 }
