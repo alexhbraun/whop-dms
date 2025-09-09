@@ -1,141 +1,113 @@
 // app/api/admin/test-webhook/route.ts
 import { NextResponse } from "next/server";
-import { logInfo, logError } from "@/lib/log";
-import { sendWelcomeDM } from "@/lib/dm";
-import crypto from "crypto";
+import { sendWelcomeDM } from '@/lib/dm';
 
 export const runtime = "nodejs";
 export const dynamic = 'force-dynamic';
 
-const OPEN = process.env.ADMIN_TEST_OPEN === 'true';
-
-function getIncomingSecret(req: Request) {
-  const h = (name: string) => req.headers.get(name) || "";
-  const q = new URL(req.url).searchParams.get("secret") || "";
-  // Prefer header, fall back to query
-  return (h("x-admin-secret") || h("x-admin-dash-secret") || q).trim();
-}
-
-function sha256Base64(str: string) {
-  return crypto.createHash("sha256").update(str, "utf8").digest("base64");
+function checkSecret(req: Request): { ok: boolean; error?: string; status?: number } {
+  const envSecret = process.env.ADMIN_DASH_SECRET;
+  
+  if (!envSecret) {
+    return { ok: false, error: "ADMIN_DASH_SECRET not set", status: 500 };
+  }
+  
+  const url = new URL(req.url);
+  const querySecret = url.searchParams.get("secret");
+  
+  if (!querySecret) {
+    return { ok: false, error: "unauthorized", status: 401 };
+  }
+  
+  if (envSecret.trim() !== querySecret.trim()) {
+    return { ok: false, error: "unauthorized", status: 401 };
+  }
+  
+  return { ok: true };
 }
 
 export async function GET(req: Request) {
-  const url = new URL(req.url);
-  
-  // Probe mode
-  if (url.searchParams.get('probe') === '1') {
-    return Response.json({
-      ok: true,
-      open: OPEN,
-      hasSecret: !!process.env.ADMIN_DASH_SECRET
-    });
+  const auth = checkSecret(req);
+  if (!auth.ok) {
+    return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
   }
   
-  // Secret check mode
-  const secretParam = url.searchParams.get('secret');
-  if (secretParam) {
-    const env = (process.env.ADMIN_DASH_SECRET || "").trim();
-    return Response.json({
-      ok: true,
-      match: env === secretParam.trim(),
-      haveEnv: !!env,
-      haveParam: true
-    });
-  }
-  
-  // Default behavior
-  const supplied = getIncomingSecret(req);
-  const env = (process.env.ADMIN_DASH_SECRET || "").trim();
-  
-  return Response.json({
-    ok: true,
-    haveEnv: Boolean(env),
-    haveHeader: Boolean(supplied),
-    match: Boolean(env && supplied && env === supplied),
-    diag: { envLen: env.length, hdrLen: supplied.length, envHash: env ? sha256Base64(env) : null, hdrHash: supplied ? sha256Base64(supplied) : null },
-  });
+  return Response.json({ ok: true, probe: true, ts: Date.now() });
 }
 
 export async function POST(req: Request) {
-  const { businessId, username, message } = await req.json();
-  if (!businessId || !username) {
-    return NextResponse.json({ ok: false, error: "missing businessId/username" }, { status: 400 });
+  const auth = checkSecret(req);
+  if (!auth.ok) {
+    return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
   }
 
-  if (OPEN) {
-    // Open mode - skip auth checks
-    try {
-      const eventId = `test_webhook_${Date.now()}`;
-      
-      await sendWelcomeDM({
-        businessId,
-        toUser: username,
-        customMessage: message,
-        eventId
-      });
+  const { businessId, username, userId, message, eventId, dryRun = false, templateOverride } = await req.json();
+  
+  // Validate required fields
+  if (!businessId) {
+    return NextResponse.json({ ok: false, error: "businessId is required" }, { status: 400 });
+  }
+  
+  if (!username && !userId) {
+    return NextResponse.json({ ok: false, error: "username or userId is required" }, { status: 400 });
+  }
 
-      return NextResponse.json({ 
-        ok: true, 
-        mode: 'open', 
-        businessId, 
-        username 
-      });
-    } catch (e: any) {
-      logError("admin test webhook open mode error", { 
-        error: e?.message,
-        businessId,
-        username 
-      });
-      return NextResponse.json({ 
-        ok: false, 
-        error: e?.message || "error" 
-      }, { status: 500 });
-    }
-  } else {
-    // Secured mode - check auth
-    const reqHeader = req.headers.get("x-admin-secret");
-    const env = process.env.ADMIN_DASH_SECRET;
-    
-    if (!env || !reqHeader || env !== reqHeader) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: 'unauthorized', 
-        diag: { 
-          haveEnv: !!env, 
-          haveHeader: !!reqHeader, 
-          envLen: (env || '').length, 
-          hdrLen: (reqHeader || '').length 
-        } 
-      }, { status: 401 });
-    }
+  // Log request details (excluding secret)
+  console.log("admin/test-webhook POST", {
+    businessId,
+    username,
+    userId,
+    eventId,
+    dryRun,
+    hasTemplateOverride: !!templateOverride
+  });
 
-    try {
-      const eventId = `admin_test_${Date.now()}`;
-      
-      await sendWelcomeDM({
-        businessId,
-        toUser: username,
-        customMessage: message,
-        eventId
-      });
+  // Build toUser param - prefer userId if both present
+  const toUser = userId ? { id: userId } : { username };
+  const finalEventId = eventId || `admin_test_${Date.now()}`;
 
-      return NextResponse.json({ 
-        ok: true, 
-        mode: 'secured', 
-        businessId, 
-        username 
-      });
-    } catch (e: any) {
-      logError("admin test webhook secured mode error", { 
-        error: e?.message,
+  if (dryRun === true) {
+    return Response.json({
+      ok: true,
+      mode: "dryRun",
+      preview: {
         businessId,
-        username 
-      });
-      return NextResponse.json({ 
-        ok: false, 
-        error: e?.message || "error" 
-      }, { status: 500 });
-    }
+        toUser,
+        message,
+        eventId: finalEventId,
+        templateOverride
+      }
+    });
+  }
+
+  // Real send
+  try {
+    const result = await sendWelcomeDM({
+      businessId,
+      toUser: toUser.id ? toUser.id : toUser.username,
+      customMessage: message,
+      templateOverride,
+      eventId: finalEventId
+    });
+
+    // Return only relevant fields
+    return Response.json({
+      ok: true,
+      mode: "send",
+      result: {
+        ok: result.ok,
+        status: result.status,
+        error: result.error,
+        templateId: result.templateId,
+        businessId: result.businessId
+      }
+    });
+  } catch (err: any) {
+    console.error("admin/test-webhook send error", { err });
+    return new Response(JSON.stringify({
+      ok: false,
+      mode: "send",
+      error: String(err?.message || err)
+    }), { status: 500, headers: { "content-type": "application/json" }});
   }
 }
