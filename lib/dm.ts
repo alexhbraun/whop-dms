@@ -14,6 +14,7 @@ type SendParams = {
   toUserIdOrUsername: string;        // "user_..." or "username"
   templateOverride?: string;         // optional direct message body override
   eventId?: string;                  // optional event ID for logging
+  context?: "onboarding" | "debug";  // context for logging
 };
 
 function clean(s?: string | null) {
@@ -21,7 +22,7 @@ function clean(s?: string | null) {
 }
 
 export async function sendWelcomeDM(params: SendParams) {
-  const { businessId, toUserIdOrUsername, templateOverride, eventId } = params;
+  const { businessId, toUserIdOrUsername, templateOverride, eventId, context = "debug" } = params;
   const recipient = clean(toUserIdOrUsername);
 
   if (!recipient) {
@@ -30,6 +31,13 @@ export async function sendWelcomeDM(params: SendParams) {
 
   // Select template scoped by business (fallback to global)
   const tmpl = await getTemplateForBusiness(businessId);
+  
+  // Check if template exists for business
+  if (!tmpl && !templateOverride) {
+    logError("dm.onboarding.no_template", { businessId, userId: recipient, eventId });
+    throw new Error(`No template found for business ${businessId}`);
+  }
+  
   const message = (templateOverride ?? tmpl?.message_body ?? "Welcome to the community!");
 
   // Try sending
@@ -37,7 +45,13 @@ export async function sendWelcomeDM(params: SendParams) {
   let error: string | null = null;
   let templateId: string | null = tmpl?.id ?? null;
 
-  logInfo("dm.send.attempt", { businessId, toUser: recipient, templateId, eventId });
+  logInfo("dm.send.attempt", { 
+    businessId, 
+    toUser: recipient, 
+    templateId, 
+    eventId, 
+    context 
+  });
 
   try {
     const whop = getWhopSdkWithAgent();
@@ -48,14 +62,27 @@ export async function sendWelcomeDM(params: SendParams) {
       message,
     });
     
-    logInfo("dm.send.ok", { businessId, toUser: recipient, templateId, eventId });
+    logInfo("dm.send.ok", { 
+      businessId, 
+      toUser: recipient, 
+      templateId, 
+      eventId, 
+      context 
+    });
   } catch (e: any) {
     status = "failed";
     error = e?.message ?? String(e);
-    logError("dm.send.fail", { businessId, toUser: recipient, templateId, eventId, error: e?.message });
+    logError("dm.send.fail", { 
+      businessId, 
+      toUser: recipient, 
+      templateId, 
+      eventId, 
+      context,
+      error: e?.message 
+    });
   }
 
-  // Log with richer context
+  // Log with richer context including context field
   const preview = message.slice(0, 140);
   const supabase = getSupabaseClient();
   await supabase.from("dm_send_log").insert({
@@ -64,8 +91,9 @@ export async function sendWelcomeDM(params: SendParams) {
     status,
     error,
     message_preview: preview,
-    business_id: businessId,            // NEW
-    template_id: templateId             // NEW
+    business_id: businessId,
+    template_id: templateId,
+    context: context  // NEW: distinguish between onboarding and debug
   });
 
   return { ok: status === "sent", status, error, templateId, businessId };

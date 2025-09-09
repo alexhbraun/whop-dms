@@ -7,6 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getBaseUrl } from "@/lib/urls";
 import { DM_ENABLED } from "@/lib/feature-flags";
 import { hasSentForEvent } from "@/lib/dm-db";
+import { logInfo, logError } from "@/lib/log";
 
 function getSupabaseClient() {
   return createClient(
@@ -17,7 +18,7 @@ function getSupabaseClient() {
 
 type MemberCreated = {
   id: string;
-  type: "member.created" | "membership_went_valid" | "membership_experience_claimed";
+  type: "member.created" | "membership_went_valid" | "membership_experience_claimed" | "membership.created" | "membership.experience_claimed";
   data: {
     business_id?: string;
     company_id?: string;
@@ -52,49 +53,74 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, note: "already processed" });
     }
 
-    // Handle member.created events OR membership_went_valid events OR membership_experience_claimed events
-    if (event.type === "member.created" || event.type === "membership_went_valid" || event.type === "membership_experience_claimed") {
-      console.log(`[WHOP-WEBHOOK] Processing ${event.type} event:`, JSON.stringify(event, null, 2));
+    // Handle member.created events OR membership events
+    const isOnboardingEvent = event.type === "member.created" || 
+                             event.type === "membership_went_valid" || 
+                             event.type === "membership_experience_claimed" ||
+                             event.type === "membership.created" || 
+                             event.type === "membership.experience_claimed";
+    
+    if (isOnboardingEvent) {
+      logInfo("dm.onboarding.trigger", { 
+        eventType: event.type, 
+        eventId: event.id,
+        businessId: event.data?.business_id || event.data?.company_id 
+      });
       
       const already = await hasSentForEvent(event.id);
       if (already) {
-        console.log(`[WHOP-WEBHOOK] Event ${event.id} already processed, skipping`);
+        logInfo("dm.onboarding.skip", { 
+          reason: "already_processed", 
+          eventType: event.type,
+          eventId: event.id 
+        });
         return NextResponse.json({ ok: true, skipped: "duplicate_event_id" });
       }
 
-      // Extract data - membership_went_valid might have different structure
+      // Check if DM onboarding is enabled
+      if (!DM_ENABLED) {
+        logInfo("dm.onboarding.skip", { 
+          reason: "flag_disabled", 
+          eventType: event.type,
+          eventId: event.id 
+        });
+        return NextResponse.json({ ok: true, note: "DM disabled by flag" });
+      }
+
+      // Extract data - different events might have different structures
       const business_id = event.data?.business_id || event.data?.company_id;
       const experience_id = event.data?.experience_id;
       const member_id = event.data?.member_id || event.data?.membership_id;
       
-      console.log(`[WHOP-WEBHOOK] Extracted data:`, { business_id, experience_id, member_id });
-
       const rawUser = event.data?.user || event.data?.member || {};
       const recipient =
         (rawUser.username ?? "").toString().trim() ||
         (rawUser.id ?? "").toString().trim();
 
-      console.log(`[WHOP-WEBHOOK] User data:`, rawUser);
-      console.log(`[WHOP-WEBHOOK] Recipient:`, recipient);
-
       if (!recipient) {
-        console.log(`[WHOP-WEBHOOK] No recipient found for event ${event.id}`);
+        logError("dm.onboarding.no_recipient", { 
+          eventType: event.type,
+          eventId: event.id,
+          businessId: business_id 
+        });
         return NextResponse.json({ ok: true, note: "no recipient" });
       }
 
       if (!business_id) {
-        console.log(`[WHOP-WEBHOOK] No business_id found for event ${event.id}`);
+        logError("dm.onboarding.no_business_id", { 
+          eventType: event.type,
+          eventId: event.id 
+        });
         return NextResponse.json({ ok: true, note: "no business_id" });
       }
 
       if (!member_id) {
-        console.log(`[WHOP-WEBHOOK] No member_id found for event ${event.id}`);
+        logError("dm.onboarding.no_member_id", { 
+          eventType: event.type,
+          eventId: event.id,
+          businessId: business_id 
+        });
         return NextResponse.json({ ok: true, note: "no member_id" });
-      }
-
-      if (!DM_ENABLED) {
-        console.log(`[WHOP-WEBHOOK] DM disabled by flag for event ${event.id}`);
-        return NextResponse.json({ ok: true, note: "DM disabled by flag" });
       }
 
       try {
@@ -102,13 +128,26 @@ export async function POST(req: NextRequest) {
           businessId: business_id,
           toUserIdOrUsername: recipient,
           templateOverride: buildWelcomeDm({ business_id, member_id }),
-          eventId: event.id
+          eventId: event.id,
+          context: "onboarding"
         });
         
-        console.log(`[WHOP-WEBHOOK] DM sent successfully for event ${event.id}:`, result);
+        logInfo("dm.onboarding.success", { 
+          eventType: event.type,
+          eventId: event.id,
+          businessId: business_id,
+          userId: recipient,
+          result 
+        });
         return NextResponse.json({ ok: true, result });
       } catch (e: any) {
-        console.error(`[WHOP-WEBHOOK] DM send failed for event ${event.id}:`, e?.message);
+        logError("dm.onboarding.failed", { 
+          eventType: event.type,
+          eventId: event.id,
+          businessId: business_id,
+          userId: recipient,
+          error: e?.message 
+        });
         return NextResponse.json({ ok: true, error: "send failed" });
       }
     }

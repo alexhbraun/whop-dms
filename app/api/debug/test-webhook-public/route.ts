@@ -72,7 +72,8 @@ export async function POST(req: Request) {
         businessId: businessId,
         toUserIdOrUsername: username,
         templateOverride: `🎉 Test DM from Nexo! Welcome to the community! This is a test message.`,
-        eventId: eventId
+        eventId: eventId,
+        context: "debug"
       });
       
       console.log(`[TEST-WEBHOOK] DM send result:`, result);

@@ -29,7 +29,8 @@ export async function POST(req: Request) {
       },
     };
 
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/whop/webhook`, {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://whop-dms.vercel.app';
+    const res = await fetch(`${baseUrl}/api/whop/webhook`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
