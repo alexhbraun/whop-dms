@@ -69,7 +69,7 @@ export async function GET(_req: Request, { params }: { params: { communityId: st
   try {
     const { data, error } = await supabase
       .from('onboarding_questions')
-      .select('id, business_id, label, type, is_required, order_index, options, key_slug')
+      .select('id, community_id, business_id, label, type, is_required, order_index, options, key_slug')
       .eq('business_id', params.communityId)
       .order('order_index', { ascending: true });
 
@@ -107,6 +107,7 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
         
         return {
           id: q.id,
+          community_id: params.communityId,
           business_id: params.communityId,
           key_slug,
           label: text,
@@ -136,6 +137,7 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
         const key_slug = (q.key_slug && q.key_slug.trim()) || await generateUniqueKeySlug(supabase, params.communityId, text, pos);
         
         return {
+          community_id: params.communityId,
           business_id: params.communityId,
           key_slug,
           label: text,
@@ -159,7 +161,7 @@ export async function PUT(req: Request, { params }: { params: { communityId: str
     // No destructive delete. Now return canonical rows:
     const { data: after, error: afterErr } = await supabase
       .from('onboarding_questions')
-      .select('id, business_id, label, type, is_required, order_index, options, key_slug')
+      .select('id, community_id, business_id, label, type, is_required, order_index, options, key_slug')
       .eq('business_id', params.communityId)
       .order('order_index', { ascending: true });
 
