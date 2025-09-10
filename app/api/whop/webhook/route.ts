@@ -1,151 +1,193 @@
-import { NextRequest } from "next/server";
+// app/api/whop/webhook/route.ts
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendWelcomeDM } from "@/lib/dm";
-import { getWhopSdk } from "@/lib/whop-sdk"; // this existed earlier in the project
+import { sendWelcomeDM as actualSendWelcomeDM } from "@/lib/dm";
 
-function sb() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Supabase env missing");
-  return createClient(url, key, { auth: { persistSession: false } });
+function getSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  return createClient(url, key, {
+    auth: { persistSession: false },
+  });
 }
 
-function headerEventType(req: NextRequest) {
-  const h = req.headers;
-  return (
-    h.get("whop-event") ||
-    h.get("x-whop-event") ||
-    h.get("whop-event-type") ||
-    h.get("x-whop-event-type") ||
-    h.get("x-event-type") ||
-    h.get("event-type") ||
-    null
-  );
-}
-
-function inferEventType(req: NextRequest, body: any): string {
-  return (
-    headerEventType(req) ||
-    body?.type ||
-    body?.event ||
-    body?.event_type ||
-    body?.eventType ||
-    "unknown"
-  ).toString();
-}
-
-function inferCommunityId(body: any): string | null {
-  // Try several common fields
-  return (
-    body?.data?.community_id ??
-    body?.data?.business_id ??
-    body?.community_id ??
-    body?.business_id ??
-    body?.company_id ??    // present in your Vercel sample
-    null
-  );
-}
-
-function extractUsername(body: any): string | null {
-  return (
-    body?.data?.user?.username ??
-    body?.user?.username ??
-    null
-  );
-}
-
-function extractUserId(body: any): string | null {
-  return (
-    body?.data?.user?.id ??
-    body?.user_id ??
-    null
-  );
-}
-
-function extractMembershipId(body: any): string | null {
-  return (
-    body?.data?.membership_id ??
-    body?.membership_id ??
-    null
-  );
-}
-
-function isJoinLike(type: string) {
-  return (
-    type === "membership.went_valid" ||
-    type === "app_membership.went_valid" ||
-    type === "membership_experience_claimed" ||
-    type === "payment.succeeded" // allow; we will only send if we can resolve a username
-  );
-}
-
-async function resolveUsernameViaSdk(body: any): Promise<string | null> {
-  const sdk = getWhopSdk();
-  // Try to get username from user_id
-  const userId = extractUserId(body);
-  if (userId) {
-    try {
-      const u = await sdk.users.getUser({ userId });
-      return u?.username || u?.id || null;
-    } catch (_) {
-      // If user lookup fails, return the userId as fallback
-      return userId;
-    }
+async function sendWelcomeDM(opts: {
+  communityId: string;
+  username?: string | null;
+  eventId?: string | null;
+  source?: string;
+}) {
+  try {
+    // Use the actual sendWelcomeDM function
+    await actualSendWelcomeDM({
+      businessId: opts.communityId, // our function uses businessId parameter
+      toUserIdOrUsername: opts.username || "",
+      eventId: opts.eventId || undefined,
+      source: (opts.source as any) || "webhook",
+    });
+  } catch (e: any) {
+    console.error("DM_SEND_ERROR", e?.message ?? e);
+    throw e; // Re-throw so the caller can handle it
   }
-  return null;
 }
+
+// --- Helpers ---------------------------------------------------------------
+
+function take(obj: Record<string, string>, allow: string[]) {
+  const out: Record<string, string> = {};
+  for (const k of allow) {
+    const v = obj[k.toLowerCase()];
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
+
+function normalizeHeaders(req: NextRequest) {
+  const h: Record<string, string> = {};
+  req.headers.forEach((v, k) => {
+    h[k.toLowerCase()] = v;
+  });
+  return h;
+}
+
+function extractEventType(
+  headers: Record<string, string>,
+  parsed: any
+): string {
+  // Prefer header if present
+  const h1 = headers["x-whop-event"];
+  const h2 = headers["x-whop__event"];
+  if (h1 && typeof h1 === "string") return h1;
+  if (h2 && typeof h2 === "string") return h2;
+
+  // Fallback to body
+  if (parsed && typeof parsed === "object") {
+    if (typeof parsed.type === "string") return parsed.type;
+    if (parsed.event && typeof parsed.event.type === "string")
+      return parsed.event.type;
+  }
+  return "unknown";
+}
+
+function extractCommunityId(parsed: any): string | null {
+  if (!parsed || typeof parsed !== "object") return null;
+  // Common places we saw across tests
+  const d = parsed.data ?? parsed;
+  return (
+    d?.community_id ??
+    d?.company_id ?? // older naming we saw in payloads
+    d?.experience_id ?? // if you mapped "experience" to community
+    null
+  );
+}
+
+function extractUsername(parsed: any): string | null {
+  if (!parsed || typeof parsed !== "object") return null;
+  const d = parsed.data ?? parsed;
+  return d?.user?.username ?? null;
+}
+
+function extractExternalEventId(parsed: any): string | null {
+  // If your payload carries a stable external id, pull it here
+  return parsed?.id ?? parsed?.event_id ?? null;
+}
+
+// --- Route handler ---------------------------------------------------------
+
+export const dynamic = "force-dynamic"; // ensure no caching
+export const runtime = "nodejs";        // supabase service key works best on node
 
 export async function POST(req: NextRequest) {
+  const supabase = getSupabaseAdmin();
+
+  // 1) Capture headers + raw body FIRST (never call req.json() before req.text())
+  const headersAll = normalizeHeaders(req);
+  const contentType = headersAll["content-type"] ?? "";
   const raw = await req.text();
-  let body: any;
-  try { body = raw ? JSON.parse(raw) : {}; } catch { body = { _raw: raw, _parse_error: true }; }
 
-  const eventType = inferEventType(req, body);
-  const communityId = inferCommunityId(body);
+  // 2) Try to parse JSON, but keep raw regardless
+  let parsed: any = null;
+  let json_ok = false;
+  try {
+    parsed = JSON.parse(raw);
+    json_ok = true;
+  } catch {
+    parsed = null;
+    json_ok = false;
+  }
 
-  // Attach a small header snapshot inside payload for diagnostics
-  const hdr: Record<string, string> = {};
-  req.headers.forEach((v, k) => { hdr[k] = v; });
-  body._hdr = hdr;
+  // 3) Extract event metadata
+  const event_type = extractEventType(headersAll, parsed);
+  const community_id = extractCommunityId(parsed);
+  const username = extractUsername(parsed);
+  const external_event_id = extractExternalEventId(parsed);
 
-  const supa = sb();
-  const insertRow = {
-    event_type: eventType,
-    community_id: communityId,
-    payload: body,
+  // Optional: store a curated header snapshot for debugging
+  const header_dump = take(headersAll, [
+    "content-type",
+    "x-whop-event",
+    "x-whop__event",
+    "user-agent",
+    "x-forwarded-for",
+  ]);
+
+  // 4) Persist EVERYTHING into webhook_events so we can always inspect later
+  const insertRes = await supabase.from("webhook_events").insert({
+    event_type,
+    community_id,
+    payload: parsed,       // JSONB column
+    payload_raw: raw,      // TEXT column (for exact bytes)
+    content_type: contentType,
+    header_dump,           // JSONB column
+    json_ok,
+    external_event_id,     // if your table has it; safe to include even if ignored
     received_at: new Date().toISOString(),
-  };
+  }).select("id").single();
 
-  const ins = await supa.from("webhook_events").insert(insertRow).select("id").single();
-  if (ins.error) {
-    console.error("WEBHOOK_INSERT_FAIL", { code: ins.error.code, message: ins.error.message });
-    return Response.json({ ok: false, error: "insert_failed" }, { status: 400 });
+  if (insertRes.error) {
+    console.error("WEBHOOK_INSERT_FAIL", insertRes.error);
+    // Still return 200 so Whop doesn't retry forever; you can choose 500 if you prefer
+    return NextResponse.json(
+      { ok: false, step: "insert", error: insertRes.error.message },
+      { status: 200 }
+    );
   }
 
-  // Only attempt DM for relevant events and if we can resolve a recipient
-  if (isJoinLike(eventType) && communityId) {
-    let to = extractUsername(body);
-    if (!to) {
-      to = await resolveUsernameViaSdk(body);
+  // 5) Decide whether to trigger a DM
+  // Fire only for real "new member" events you care about
+  const SHOULD_DM = [
+    "membership.went_valid",
+    "app_membership.went_valid",
+    "experience_membership.went_valid",
+  ].includes(event_type) && !!community_id;
+
+  if (SHOULD_DM) {
+    try {
+      await sendWelcomeDM({
+        communityId: community_id!,
+        username,
+        eventId: external_event_id ?? insertRes.data.id, // track both if you have both
+        source: "webhook",
+      });
+    } catch (e: any) {
+      console.error("DM_SEND_ERROR", e?.message ?? e);
+      // Optionally write a failure row to dm_send_log here, but your real
+      // sendWelcomeDM should already do that.
     }
-    if (to) {
-      try {
-        console.log("DM_SEND_ATTEMPT", { eventType, communityId, to });
-        await sendWelcomeDM({
-          businessId: communityId,             // treated as community id in our helpers
-          toUserIdOrUsername: to,
-          source: "webhook",
-        });
-        console.log("DM_SEND_OK", { to });
-      } catch (e: any) {
-        console.error("DM_SEND_FAIL", { err: e?.message || String(e) });
-      }
-    } else {
-      console.log("DM_SKIP_NO_RECIPIENT", { eventType, communityId });
-    }
-  } else {
-    console.log("WEBHOOK_NOOP", { eventType, communityId });
   }
 
-  return Response.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    event_type,
+    community_id,
+    json_ok,
+    inserted: insertRes.data?.id ?? true,
+    dm_triggered: SHOULD_DM,
+  });
+}
+
+// Optional lightweight GET for smoke-probing the route from a browser
+export async function GET() {
+  return NextResponse.json({ ok: true, probe: "whop-webhook" });
 }
