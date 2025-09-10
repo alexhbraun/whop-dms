@@ -11,7 +11,7 @@ interface SendOpts {
   toUser: { username?: string; id?: string }     // at least one required
   message: string
   eventId: string                                // caller provides
-  source: 'admin' | 'webhook' | 'debug'
+  source: 'admin' | 'webhook' | 'debug' | 'replay'
   templateId?: string | null
 }
 
@@ -23,7 +23,7 @@ type SendParams = {
   customMessage?: string;            // optional direct message body override (renamed for compatibility)
   templateOverride?: string;         // optional direct message body override (keep for backward compatibility)
   eventId?: string;                  // optional event ID for logging
-  context?: "onboarding" | "debug";  // context for logging
+  context?: "onboarding" | "debug" | "replay";  // context for logging
 };
 
 function clean(s?: string | null) {
@@ -100,7 +100,19 @@ export async function sendWelcomeDM(params: SendParams) {
   const messageOverride = customMessage || templateOverride;
   const effectiveCommunityId = communityId ?? businessId;
 
+  console.log("DM_PIPELINE_START", { 
+    communityId: effectiveCommunityId, 
+    toUser: recipient, 
+    eventId: eventId || `debug_${Date.now()}`,
+    context
+  });
+
   if (!recipient) {
+    console.log("DM_PIPELINE_SKIP", { 
+      reason: "no_recipient", 
+      communityId: effectiveCommunityId, 
+      eventId: eventId || `debug_${Date.now()}` 
+    });
     throw new Error("Recipient is empty: toUser or toUserIdOrUsername must be provided.");
   }
 
@@ -109,6 +121,11 @@ export async function sendWelcomeDM(params: SendParams) {
   
   // Check if template exists for community
   if (!tmpl && !messageOverride) {
+    console.log("DM_PIPELINE_SKIP", { 
+      reason: "no_template", 
+      communityId: effectiveCommunityId, 
+      eventId: eventId || `debug_${Date.now()}` 
+    });
     logError("dm.onboarding.no_template", { businessId: effectiveCommunityId, userId: recipient, eventId });
     throw new Error(`No template found for community ${effectiveCommunityId}`);
   }
@@ -118,23 +135,48 @@ export async function sendWelcomeDM(params: SendParams) {
   const finalEventId = eventId || `debug_${Date.now()}`;
 
   // Use the new sendAndLogDM function
-  const result = await sendAndLogDM({
-    businessId,
-    communityId: effectiveCommunityId,
-    toUser: { username: recipient, id: undefined }, // Assume username for backward compatibility
-    message,
-    eventId: finalEventId,
-    source: context === "onboarding" ? "webhook" : "debug",
-    templateId
-  });
+  try {
+    const result = await sendAndLogDM({
+      businessId,
+      communityId: effectiveCommunityId,
+      toUser: { username: recipient, id: undefined }, // Assume username for backward compatibility
+      message,
+      eventId: finalEventId,
+      source: context === "onboarding" ? "webhook" : (context === "replay" ? "replay" : "admin"),
+      templateId
+    });
 
-  return { 
-    ok: result.ok, 
-    status: result.status, 
-    error: result.error, 
-    templateId, 
-    businessId: effectiveCommunityId // Return effective community id
-  };
+    if (result.ok) {
+      console.log("DM_PIPELINE_OK", { 
+        communityId: effectiveCommunityId, 
+        toUser: recipient, 
+        eventId: finalEventId 
+      });
+    } else {
+      console.error("DM_PIPELINE_FAIL", { 
+        communityId: effectiveCommunityId, 
+        toUser: recipient, 
+        eventId: finalEventId, 
+        error: result.error 
+      });
+    }
+
+    return { 
+      ok: result.ok, 
+      status: result.status, 
+      error: result.error, 
+      templateId, 
+      businessId: effectiveCommunityId // Return effective community id
+    };
+  } catch (error: any) {
+    console.error("DM_PIPELINE_FAIL", { 
+      communityId: effectiveCommunityId, 
+      toUser: recipient, 
+      eventId: finalEventId, 
+      error: error?.message 
+    });
+    throw error;
+  }
 }
 
 
