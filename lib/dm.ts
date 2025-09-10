@@ -24,6 +24,7 @@ type SendParams = {
   templateOverride?: string;         // optional direct message body override (keep for backward compatibility)
   eventId?: string;                  // optional event ID for logging
   context?: "onboarding" | "debug" | "replay";  // context for logging
+  source?: "webhook" | "admin" | "debug" | "replay";  // source for dm_send_log
 };
 
 function clean(s?: string | null) {
@@ -95,7 +96,7 @@ export async function sendAndLogDM(opts: SendOpts): Promise<{ ok: boolean; statu
 }
 
 export async function sendWelcomeDM(params: SendParams) {
-  const { businessId, communityId, toUser, toUserIdOrUsername, customMessage, templateOverride, eventId, context = "debug" } = params;
+  const { businessId, communityId, toUser, toUserIdOrUsername, customMessage, templateOverride, eventId, context = "debug", source = "admin" } = params;
   const recipient = clean(toUser || toUserIdOrUsername);
   const messageOverride = customMessage || templateOverride;
   const effectiveCommunityId = communityId ?? businessId;
@@ -142,7 +143,7 @@ export async function sendWelcomeDM(params: SendParams) {
       toUser: { username: recipient, id: undefined }, // Assume username for backward compatibility
       message,
       eventId: finalEventId,
-      source: context === "onboarding" ? "webhook" : (context === "replay" ? "replay" : "admin"),
+      source: source || (context === "onboarding" ? "webhook" : (context === "replay" ? "replay" : "admin")),
       templateId
     });
 
