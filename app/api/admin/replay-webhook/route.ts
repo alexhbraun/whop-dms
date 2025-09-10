@@ -1,6 +1,5 @@
-// app/api/admin/replay-webhook/route.ts
 import { NextResponse } from "next/server";
 
 export async function POST() {
-  return NextResponse.json({ ok: true, msg: "route is alive" });
+  return NextResponse.json({ ok: true, msg: "route is alive (no auth)" });
 }
