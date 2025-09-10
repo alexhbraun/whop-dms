@@ -101,87 +101,104 @@ export const runtime = "nodejs";        // supabase service key works best on no
 export async function POST(req: NextRequest) {
   const supabase = getSupabaseAdmin();
 
-  // 1) Capture raw headers and parsed JSON body
-  const lowercasedHeaders = new Map<string, string>();
+  // 1) Capture headers in a lowercased map
+  const headers = new Map<string, string>();
   req.headers.forEach((value, key) => {
-    lowercasedHeaders.set(key.toLowerCase(), value);
+    headers.set(key.toLowerCase(), value);
   });
-  
+
+  // 2) Read raw body with await req.text() (DO NOT call req.json() first)
   const raw = await req.text();
-  let body: any = {};
-  try {
-    body = raw ? JSON.parse(raw) : {};
-  } catch {
-    body = {};
-  }
   
+  // 3) Parse JSON with try/catch into 'bodyParsed'
+  let bodyParsed: any = null;
+  const contentType = headers.get('content-type') || '';
+  
+  if (contentType.startsWith('application/x-www-form-urlencoded')) {
+    // Decode form data into an object
+    try {
+      const params = new URLSearchParams(raw);
+      bodyParsed = Object.fromEntries(params.entries());
+    } catch {
+      bodyParsed = null;
+    }
+  } else {
+    // Parse JSON
+    try {
+      bodyParsed = raw ? JSON.parse(raw) : null;
+    } catch {
+      bodyParsed = null;
+    }
+  }
+
+  // 4) Extract event fields with robust fallbacks
   const qp = new URL(req.url).searchParams;
   const force = qp.get('force') === '1';
 
-  // 2) Derive event fields with robust fallbacks
-  const hdr = lowercasedHeaders;
-  
   const headerType =
-    hdr.get('x-whop-event') ??
-    hdr.get('x-whop-event-type') ??
-    hdr.get('whop-event') ??
+    headers.get('x-whop-event') ||
+    headers.get('x-whop-event-type') ||
+    headers.get('whop-event') ||
     undefined;
 
   const bodyType =
-    body?.type ??
-    body?.event ??
-    body?.data?.type ??
+    bodyParsed?.type ||
+    bodyParsed?.event ||
+    bodyParsed?.data?.type ||
     undefined;
 
   const eventType = headerType ?? bodyType ?? 'unknown';
 
-  // company/community fallbacks
   const headerCompany =
-    hdr.get('x-whop-company-id') ??
-    hdr.get('x-whop-community-id') ??
+    headers.get('x-whop-company-id') ||
+    headers.get('x-whop-community-id') ||
     undefined;
 
   const bodyCompany =
-    body?.data?.community_id ??
-    body?.data?.company_id ??
-    body?.community_id ??
-    body?.company_id ??
+    bodyParsed?.data?.community_id ??
+    bodyParsed?.data?.company_id ??
+    bodyParsed?.community_id ??
+    bodyParsed?.company_id ??
     undefined;
 
   const communityId = headerCompany ?? bodyCompany ?? null;
 
-  // username fallbacks
   const username =
-    body?.data?.user?.username ??
-    body?.user?.username ??
-    body?.data?.username ??
-    body?.username ??
+    bodyParsed?.data?.user?.username ??
+    bodyParsed?.user?.username ??
+    bodyParsed?.data?.username ??
+    bodyParsed?.username ??
     null;
 
-  // external event id fallbacks
   const externalEventId =
-    hdr.get('x-whop-event-id') ??
-    body?.id ??
-    body?.event_id ??
+    headers.get('x-whop-event-id') ??
+    bodyParsed?.id ??
+    bodyParsed?.event_id ??
     null;
 
-  console.log("WEBHOOK_HIT_DIAG", { eventType, communityId, username, externalEventId, force });
+  console.log('WEBHOOK_HIT_DIAG', { eventType, communityId, username, externalEventId, force });
 
-  // 3) Insert into webhook_events exactly what we received
-  const headersDump = {
-    'x-whop-event': hdr.get('x-whop-event'),
-    'x-whop-company-id': hdr.get('x-whop-company-id'),
-    'x-whop-community-id': hdr.get('x-whop-community-id'),
-    'x-whop-event-id': hdr.get('x-whop-event-id'),
-    'content-type': hdr.get('content-type'),
-  };
+  // 5) Prepare headers_dump object with only specified keys if present
+  const headersDump: Record<string, string> = {};
+  const headerKeys = [
+    'content-type', 'x-whop-event', 'x-whop-event-type', 'whop-event',
+    'x-whop-company-id', 'x-whop-community-id', 'user-agent', 'x-forwarded-for'
+  ];
+  
+  for (const key of headerKeys) {
+    const value = headers.get(key);
+    if (value) {
+      headersDump[key] = value;
+    }
+  }
 
+  // 6) Insert into public.webhook_events
   const insertRes = await supabase.from("webhook_events").insert({
     event_type: eventType,
     community_id: communityId,
-    payload: body, // full parsed body (jsonb)
-    headers_dump: headersDump, // small subset of headers (jsonb)
-    external_event_id: externalEventId, // text
+    payload: bodyParsed, // jsonb
+    headers_dump: headersDump, // jsonb
+    external_event_id: externalEventId,
     received_at: new Date().toISOString(),
   }).select("id").single();
 
@@ -194,17 +211,18 @@ export async function POST(req: NextRequest) {
   }
 
   const insertId = insertRes.data.id;
-  console.log("WEBHOOK_INSERT_OK", { insertId });
+  console.log('WEBHOOK_INSERT_OK', { insertId });
 
-  // 4) Decide whether to trigger DM
+  // 7) Decide to trigger DM
   const allowed = new Set([
     'membership.went_valid',
     'app_membership.went_valid',
-    'membership_experience_claimed',
+    'experience_membership.went_valid',
+    'membership_experience_claimed'
   ]);
   const shouldTrigger = force || (allowed.has(eventType) && !!communityId);
 
-  console.log("WEBHOOK_DECISION", { shouldTrigger });
+  console.log('WEBHOOK_DECISION', { shouldTrigger });
 
   if (!shouldTrigger) {
     return NextResponse.json({
@@ -219,16 +237,16 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // 5) If shouldTrigger, call sendWelcomeDM
+  // 8) If shouldTrigger, call sendWelcomeDM
   try {
     const dmResult = await sendWelcomeDM({
       communityId: communityId!,
       username: username,
       eventId: externalEventId ?? insertId ?? 'evt_local',
-      source: "webhook",
+      source: 'webhook',
     });
 
-    console.log("WEBHOOK_DM_RESULT", { 
+    console.log('WEBHOOK_DM_RESULT', { 
       status: dmResult?.status || 'unknown', 
       error: dmResult?.error || null 
     });
@@ -248,7 +266,7 @@ export async function POST(req: NextRequest) {
       }
     });
   } catch (e: any) {
-    console.error("WEBHOOK_DM_RESULT", { 
+    console.log('WEBHOOK_DM_RESULT', { 
       status: 'failed', 
       error: e?.message || String(e) 
     });
