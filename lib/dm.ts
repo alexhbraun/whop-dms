@@ -2,6 +2,7 @@ import { getWhopSdkWithAgent } from "@/lib/whop-sdk";
 import { getTemplateForCommunity } from "@/lib/db/templates";
 import { getServiceDb } from "@/lib/db/client";
 import { logInfo, logError } from "@/lib/log";
+import { getBaseUrl } from "@/lib/urls";
 
 // Removed hardcoded env vars - now using getAgentAndCompany()
 
@@ -31,7 +32,18 @@ function clean(s?: string | null) {
   return (s ?? "").toString().trim();
 }
 
-export async function sendAndLogDM(opts: SendOpts): Promise<{ ok: boolean; status: string; error?: string }> {
+// --- simple template render helper ---
+function renderTemplate(str: string, vars: Record<string, string>): string {
+  let out = str || "";
+  for (const [key, value] of Object.entries(vars)) {
+    const re = new RegExp(`\\{\\{\n?\t?\r?${key}\\}\}`, "g");
+    out = out.replace(re, value);
+  }
+  // collapse double spaces and trim
+  return out.replace(/\s{2,}/g, " ").trim();
+}
+
+export async function sendAndLogDM(opts: SendOpts): Promise<{ ok: boolean; status: string; error?: string; alreadyLogged?: boolean }> {
   const { businessId, communityId, toUser, message, eventId, source, templateId } = opts;
   const effectiveCommunityId = communityId ?? businessId;
   
@@ -46,53 +58,52 @@ export async function sendAndLogDM(opts: SendOpts): Promise<{ ok: boolean; statu
 
   try {
     const whop = getWhopSdkWithAgent();
-    
-    // Send the DM
     await whop.messages.sendDirectMessageToUser({
       toUserIdOrUsername: toUserLabel,
       message,
     });
-    
-    logInfo("dm.send.ok", { 
-      businessId, 
-      toUser: toUserLabel, 
-      eventId, 
-      source 
-    });
+    logInfo("dm.send.ok", { businessId: effectiveCommunityId, toUser: toUserLabel, eventId, source });
   } catch (e: any) {
     status = "failed";
     error = e?.message ?? String(e);
-    logError("dm.send.fail", { 
-      businessId, 
-      toUser: toUserLabel, 
-      eventId, 
-      source,
-      error: e?.message 
-    });
+    logError("dm.send.fail", { businessId: effectiveCommunityId, toUser: toUserLabel, eventId, source, error: e?.message });
   }
 
-  // Log to database
+  // Log to database with duplicate protection
+  let alreadyLogged = false;
   try {
     const db = getServiceDb();
-    const preview = message.slice(0, 140);
-    
-    await db.from("dm_send_log").insert({
-      event_id: eventId,
-      business_id: effectiveCommunityId, // Store effective community id as business_id for now
-      to_user: toUserLabel,
-      status,
-      error,
-      message_preview: preview,
-      template_id: templateId,
-      source,
-      created_at: new Date().toISOString()
-    });
+    const preview = message.slice(0, 120);
+
+    const { error: insertError } = await db
+      .from("dm_send_log")
+      .insert({
+        event_id: eventId,
+        business_id: effectiveCommunityId, // Store effective community id as business_id for now
+        to_user: toUserLabel,
+        status,
+        error,
+        message_preview: preview,
+        template_id: templateId ?? null,
+        source,
+        agent_display_name: null,
+        created_at: new Date().toISOString()
+      });
+
+    if (insertError) {
+      // 23505 unique_violation
+      if ((insertError as any).code === '23505') {
+        alreadyLogged = true;
+        logInfo("dm.send.duplicate_event", { eventId });
+      } else {
+        throw insertError;
+      }
+    }
   } catch (dbError) {
     console.error("Failed to log DM to database:", dbError);
-    // Don't throw - we still want HTTP 200 for admin tester
   }
 
-  return { ok: status === "sent", status, error: error || undefined };
+  return { ok: status === "sent", status, error: error || undefined, alreadyLogged };
 }
 
 export async function sendWelcomeDM(params: SendParams) {
@@ -120,6 +131,12 @@ export async function sendWelcomeDM(params: SendParams) {
   // Select template scoped by community (fallback to global)
   const tmpl = await getTemplateForCommunity(effectiveCommunityId);
   
+  // Build simple context for rendering
+  const member_name = recipient;
+  const community_name = effectiveCommunityId; // TODO: resolve friendly name from settings/installation
+  const onboarding_link = `${getBaseUrl()}/onboarding/${effectiveCommunityId}`;
+  const ctx = { member_name, community_name, onboarding_link };
+
   // Check if template exists for community
   if (!tmpl && !messageOverride) {
     console.log("DM_PIPELINE_SKIP", { 
@@ -131,7 +148,12 @@ export async function sendWelcomeDM(params: SendParams) {
     throw new Error(`No template found for community ${effectiveCommunityId}`);
   }
   
-  const message = (messageOverride ?? tmpl?.content ?? "Welcome to the community!");
+  const rendered = messageOverride ?? renderTemplate(tmpl?.content ?? "Welcome to the community!", ctx);
+  // Optional intro line – default to false until settings are wired
+  const includeIntroLine = false;
+  const intro = `Hi, I’m the welcome assistant for ${ctx.community_name} (powered by Nexo). `;
+  const message = includeIntroLine ? (intro + rendered) : rendered;
+
   const templateId = tmpl?.id ?? null;
   const finalEventId = eventId || `debug_${Date.now()}`;
 
@@ -167,7 +189,8 @@ export async function sendWelcomeDM(params: SendParams) {
       status: result.status, 
       error: result.error, 
       templateId, 
-      businessId: effectiveCommunityId // Return effective community id
+      businessId: effectiveCommunityId,
+      alreadyLogged: result.alreadyLogged
     };
   } catch (error: any) {
     console.error("DM_PIPELINE_FAIL", { 

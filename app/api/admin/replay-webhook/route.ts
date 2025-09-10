@@ -83,19 +83,39 @@ export async function POST(req: Request) {
 
     // 3) Call the SAME helper the live webhook path uses
     //    This function should already log into dm_send_log with source='replay'
-    const res = await sendWelcomeDM({
-      businessId: communityId,            // helper maintained backwards-compatible
-      toUserIdOrUsername: to,
-      // message: undefined -> use template selection logic
-      // eventId helps correlate (optional)
-      eventId: row.external_event_id ?? `replay_${row.id}`,
-      source: "replay",
-    });
+    try {
+      const res = await sendWelcomeDM({
+        businessId: communityId,            // helper maintained backwards-compatible
+        toUserIdOrUsername: to,
+        eventId: row.external_event_id ?? `replay_${row.id}`,
+        source: "replay",
+      });
 
-    return NextResponse.json({ ok: true, preview, result: res });
+      if (res.alreadyLogged) {
+        return NextResponse.json({ ok: true, sent: false, reason: "duplicate", preview, result: res });
+      }
+
+      return NextResponse.json({ ok: true, sent: res.ok, reason: res.ok ? "sent" : "failed", preview, result: res });
+    } catch (sendErr: any) {
+      return NextResponse.json({ ok: true, sent: false, reason: "error", error: sendErr?.message, preview });
+    }
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message ?? String(e) }, { status: 500 });
   }
 }
 
 export const dynamic = "force-dynamic";
+
+/*
+# 1) Render dry-run:
+# GET /api/admin/replay-webhook?secret=...&externalEventId=<last external_event_id>&dryRun=1
+# -> returns the rendered message and ctx
+
+# 2) Real send:
+# POST /api/admin/replay-webhook?secret=... { "externalEventId":"..." }
+# -> returns {ok:true, sent:true}
+
+# 3) Duplicate protection:
+# POST same payload again
+# -> returns {ok:true, sent:false, reason:"duplicate"}
+*/
