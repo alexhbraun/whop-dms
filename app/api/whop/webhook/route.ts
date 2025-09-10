@@ -1,5 +1,21 @@
 export const runtime = "nodejs";
 
+/*
+Debug SQL helpers for post-deploy testing:
+
+-- Recent webhook events
+select external_event_id, event_type, community_id, received_at
+from public.webhook_events
+order by received_at desc
+limit 10;
+
+-- Recent DM sends
+select event_id, business_id as community_id, to_user, status, error, message_preview, source, created_at
+from public.dm_send_log
+order by created_at desc
+limit 10;
+*/
+
 import { NextRequest, NextResponse } from "next/server";
 import { getWhopSdk } from "@/lib/whop-sdk";
 import { sendWelcomeDM } from "@/lib/dm";
@@ -41,7 +57,7 @@ export async function POST(req: NextRequest) {
       const communityId = payload.data?.community_id || payload.data?.business_id || payload.data?.company_id;
       
       const webhookRow = {
-        id: payload?.id ?? crypto.randomUUID(),
+        external_event_id: payload?.id ?? `manual_${Date.now()}`,
         event_type: payload?.type ?? 'unknown',
         community_id: communityId,
         payload: payload,
@@ -51,12 +67,24 @@ export async function POST(req: NextRequest) {
       const { error } = await sb.from("webhook_events").insert(webhookRow);
       
       if (error) {
+        // Check if it's a duplicate external_event_id error
+        if (error.code === '23505' && error.message?.includes('external_event_id')) {
+          console.log("WEBHOOK_DUPLICATE", { 
+            ts: Date.now(), 
+            event: payload?.type, 
+            externalEventId: payload?.id,
+            communityId: communityId
+          });
+          // Return success for duplicate events (retry/duplicate)
+          return NextResponse.json({ ok: true, debug: 'duplicate-event' }, { status: 200 });
+        }
         console.error("WEBHOOK_INSERT_FAIL", error);
       } else {
         console.log("WEBHOOK_HIT", { 
           ts: Date.now(), 
           event: payload?.type, 
           communityId: communityId,
+          externalEventId: payload?.id,
           inserted: true 
         });
       }
@@ -144,7 +172,7 @@ export async function POST(req: NextRequest) {
           communityId: communityId,
           toUserIdOrUsername: username || userId,
           templateOverride: message,
-          eventId: payload.id || `webhook_${Date.now()}`,
+          eventId: payload.id || `webhook_${Date.now()}`, // Use Whop's event ID for consistency
           context: "onboarding"
         });
         
