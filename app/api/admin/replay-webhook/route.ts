@@ -141,19 +141,19 @@ export async function POST(req: Request) {
 
   // --- log to Supabase using ONLY the allowed columns ---
   const insertRow = {
-    event_id: externalEventId,           // text
-    business_id: communityId,            // <-- IMPORTANT: business_id, not community_id
+    event_id: externalEventId,       // same id as the webhook event
+    business_id: communityId,
     to_user: toUser,
-    status: dmStatus,                    // 'sent' | 'failed'
+    status: dmStatus,                // 'sent' | 'failed'
     error: dmError,
-    source: "admin",                     // replay/admin source
-    message_preview: renderedMessage?.slice(0, 200) || null,
+    source: "admin",                 // replay
+    message_preview: (renderedMessage || "").slice(0, 200),
   };
 
-  // do not include any extra keys; this must match the table shape exactly
+  // Idempotent write: if it already exists, update the latest info.
   const { error: logErr } = await supabase
     .from("dm_send_log")
-    .insert(insertRow);
+    .upsert(insertRow, { onConflict: "event_id", ignoreDuplicates: false });
 
   if (logErr) {
     console.error("DM_LOG_INSERT_FAIL", { logErr, insertRow });
