@@ -33,7 +33,7 @@ function clean(s?: string | null) {
 }
 
 // --- simple template render helper ---
-function renderTemplate(str: string, vars: Record<string, string>): string {
+export function renderTemplate(str: string, vars: Record<string, string>): string {
   let out = str || "";
   for (const [key, value] of Object.entries(vars)) {
     const re = new RegExp(`\\{\\{\n?\t?\r?${key}\\}\}`, "g");
@@ -86,7 +86,6 @@ export async function sendAndLogDM(opts: SendOpts): Promise<{ ok: boolean; statu
         message_preview: preview,
         template_id: templateId ?? null,
         source,
-        agent_display_name: null,
         created_at: new Date().toISOString()
       });
 
