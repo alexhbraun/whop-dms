@@ -176,6 +176,21 @@ export async function POST(req: NextRequest) {
     bodyParsed?.event_id ??
     null;
 
+  // For forced tests, require REAL values and reject placeholders
+  if (force) {
+    const hasPlaceholders = (s?: string | null) => !!(s && (s.includes('<') || s.includes('>')));
+    if (hasPlaceholders(communityId) || hasPlaceholders(username)) {
+      return NextResponse.json({
+        ok: false,
+        error: 'forced_test_requires_real_values',
+        detail: {
+          communityId: hasPlaceholders(communityId) ? 'contains_placeholders' : 'ok',
+          username: hasPlaceholders(username) ? 'contains_placeholders' : 'ok'
+        }
+      }, { status: 400 });
+    }
+  }
+
   console.log('WEBHOOK_HIT_DIAG', { eventType, communityId, username, externalEventId, force });
 
   // 5) Prepare headers_dump object with only specified keys if present

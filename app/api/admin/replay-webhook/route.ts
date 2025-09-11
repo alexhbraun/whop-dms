@@ -5,6 +5,7 @@ import { getTemplateForCommunity } from '@/lib/db/templates'; // template select
 import { getWhopClient } from '@/lib/whopClient'; // direct Whop client
 import { renderTemplate } from '@/lib/dm'; // template rendering
 import { getBaseUrl } from '@/lib/urls'; // base URL helper
+import { coerceEventId } from '@/lib/db'; // event ID utility
 
 type ReplayBody = {
   externalEventId?: string;
@@ -12,8 +13,8 @@ type ReplayBody = {
   verbose?: boolean;
 };
 
-function nonEmpty(s?: string | null) { 
-  return !!s && s.trim() !== "" && !s.includes("<"); 
+function hasPlaceholders(s?: string | null): boolean {
+  return !!(s && (s.includes('<') || s.includes('>')));
 }
 
 function previewOf(text: string, n = 140) {
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
 
   console.log('WEBHOOK_REPLAY_BEGIN', { externalEventId, dryRun, verbose });
 
-  // 1) Load webhook row (by external_event_id)
+  // 1) Look up the corresponding row from public.webhook_events by external_event_id
   const { data: w, error: whErr } = await supabase
     .from('webhook_events')
     .select('id, event_type, community_id, payload')
@@ -58,101 +59,127 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'not-found' }, { status: 404 });
   }
 
-  // 2) Derive effective community/business id
-  const businessId = w.community_id || w.payload?.data?.community_id || null;
+  // 2) Resolve communityId and toUser from webhook payload
+  const communityId = w.payload?.data?.community_id || w.community_id || null;
+  const toUser = w.payload?.data?.user?.username || null;
 
-  // 3) Resolve the target username
-  let toUser =
-    (typeof w.payload?.data?.user?.username === 'string' && nonEmpty(w.payload.data.user.username))
-      ? w.payload.data.user.username
-      : process.env.TEST_WHOP_USERNAME || ""; // fallback for local testing
-
-  if (!nonEmpty(toUser)) {
-    console.log("REPLAY: missing toUser, refusing to send.", { externalEventId, businessId, toUser });
-    
-    // log a 'failed' row to dm_send_log using business_id (not community_id)
-    await supabase.from('dm_send_log').insert({
-      event_id: externalEventId,
-      business_id: businessId,
-      to_user: toUser || null,
-      status: 'failed',
-      error: 'You must provide at least one User to send a direct message to.',
-      source: 'replay',
-      message_preview: null
-    });
-
-    return NextResponse.json({ ok: false, error: 'Missing username' }, { status: 400 });
+  // 3) Add placeholder guard
+  if (hasPlaceholders(communityId) || hasPlaceholders(toUser)) {
+    const detail = {
+      communityId: hasPlaceholders(communityId) ? 'contains_placeholders' : 'ok',
+      toUser: hasPlaceholders(toUser) ? 'contains_placeholders' : 'ok'
+    };
+    return NextResponse.json({ 
+      ok: false, 
+      error: "placeholders_detected", 
+      detail 
+    }, { status: 400 });
   }
 
-  // 4) Render the DM text using existing template selection
-  const tmpl = await getTemplateForCommunity(businessId);
+  // 4) Validate required fields
+  if (!toUser) {
+    return NextResponse.json({ ok: false, error: 'missing_username' }, { status: 400 });
+  }
+  if (!communityId) {
+    return NextResponse.json({ ok: false, error: 'missing_community' }, { status: 400 });
+  }
+
+  // 5) Render the DM text using existing template resolution
+  const tmpl = await getTemplateForCommunity(communityId);
   
   // Build context for rendering
   const member_name = toUser;
-  const community_name = businessId || 'the community';
-  const onboarding_link = `${getBaseUrl()}/onboarding/${businessId}`;
+  const community_name = communityId;
+  const onboarding_link = `${getBaseUrl()}/onboarding/${communityId}`;
   const ctx = { member_name, community_name, onboarding_link };
 
   const messageText = tmpl?.content ? renderTemplate(tmpl.content, ctx) : `Hi ${toUser}, welcome to ${community_name}! Tap here to get started: ${onboarding_link}`;
-  const preview = previewOf(messageText, 140);
+  const messagePreview = previewOf(messageText, 140);
 
-  console.log('REPLAY_RESOLVED', { eventType: w.event_type, businessId, toUser, hasTemplate: !!tmpl });
+  console.log('REPLAY_RESOLVED', { eventType: w.event_type, communityId, toUser, hasTemplate: !!tmpl });
 
-  // 5) If dryRun → return what would be sent (no SDK call), do not insert a "sent" row
+  // 6) If dryRun: return preview without sending or logging
   if (dryRun) {
     return NextResponse.json({
       ok: true,
-      dryRun: true,
-      toUser,
-      businessId,
-      templateId: tmpl?.id || null,
-      preview
+      mode: "dryRun",
+      preview: {
+        communityId,
+        eventType: w.event_type,
+        to: toUser,
+        templateId: tmpl?.id || null,
+        messagePreview
+      }
     });
   }
 
-  // 6) Real send via Whop SDK
-  let sendOk = false, sendErr = "";
+  // 7) Real send: call DM send function
+  let dmStatus: "sent" | "failed" = "failed";
+  let errorTextOrNull: string | null = null;
+
   try {
     const whopClient = getWhopClient();
-    const res = await whopClient.messages.sendDirectMessageToUser({
-      toUserIdOrUsername: toUser, // IMPORTANT: username must be real, not a placeholder
+    await whopClient.messages.sendDirectMessageToUser({
+      toUserIdOrUsername: toUser,
       message: messageText
     });
-    sendOk = true;
-    console.log('REPLAY_SEND_SUCCESS', { toUser, businessId, externalEventId });
+    dmStatus = "sent";
+    console.log('REPLAY_SEND_SUCCESS', { toUser, communityId, externalEventId });
   } catch (e: any) {
-    sendErr = (e?.message || String(e));
-    console.error("DM_SEND_FAIL", { toUser, businessId, externalEventId, error: sendErr });
+    errorTextOrNull = e?.message || String(e);
+    console.error("DM_SEND_FAIL", { toUser, communityId, externalEventId, error: errorTextOrNull });
   }
 
-  // 7) Insert into dm_send_log using ONLY the existing columns (no agent_display_name, no community_id)
+  // 8) Insert into Supabase public.dm_send_log using ONLY existing columns
+  const externalEventIdOrUuid = coerceEventId(externalEventId);
   const row = {
-    event_id: externalEventId,
-    business_id: businessId,
+    event_id: externalEventIdOrUuid,
+    business_id: communityId,        // map community → business_id
     to_user: toUser,
-    status: sendOk ? 'sent' : 'failed',
-    error: sendOk ? null : sendErr,
+    status: dmStatus,                // 'sent' or 'failed'
+    error: errorTextOrNull,
     source: 'replay',
-    message_preview: preview
+    message_preview: messagePreview
   };
 
-  const ins = await supabase.from('dm_send_log').insert(row).select().single();
-
-  if (ins.error) {
-    console.error("DM_LOG_INSERT_FAIL", { error: ins.error, row });
-  } else {
-    console.log("DM_LOG_INSERTED", ins.data);
+  let dmLogInsertError = null;
+  try {
+    const { error: insertError } = await supabase
+      .from('dm_send_log')
+      .insert(row)
+      .select()
+      .single();
+    
+    if (insertError) {
+      dmLogInsertError = insertError.message;
+      console.error('DM_LOG_INSERT_FAIL', { error: insertError, insertRow: row });
+    }
+  } catch (e: any) {
+    dmLogInsertError = e?.message || String(e);
+    console.error('DM_LOG_INSERT_FAIL', { error: e, insertRow: row });
   }
 
-  // 8) Respond
+  // 9) Always log compact result
+  console.log('REPLAY_SEND_RESULT', { 
+    ok: dmStatus === 'sent', 
+    sent: dmStatus === 'sent', 
+    templateId: tmpl?.id || null, 
+    toUser, 
+    communityId, 
+    externalEventId 
+  });
+
+  // 10) Respond (always 200, include dmLogInsertError if present)
   return NextResponse.json({
-    ok: sendOk,
-    result: sendOk ? 'sent' : 'failed',
+    ok: dmStatus === 'sent',
+    sent: dmStatus === 'sent',
+    result: dmStatus,
     toUser,
-    businessId,
+    communityId,
     templateId: tmpl?.id || null,
-    preview
-  }, { status: sendOk ? 200 : 400 });
+    preview: messagePreview,
+    dmLogInsertError
+  });
 }
 
 export const dynamic = "force-dynamic";
