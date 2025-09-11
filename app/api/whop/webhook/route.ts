@@ -101,80 +101,86 @@ export const runtime = "nodejs";        // supabase service key works best on no
 export async function POST(req: NextRequest) {
   const supabase = getSupabaseAdmin();
 
-  // 1) Capture headers in a lowercased map
-  const headers = new Map<string, string>();
-  req.headers.forEach((value, key) => {
-    headers.set(key.toLowerCase(), value);
-  });
+  // At the very top, read headers and content type
+  const contentType = req.headers.get('content-type') ?? null;
+  const headersDump = Object.fromEntries(req.headers.entries());
 
-  // 2) Read raw body with await req.text() (DO NOT call req.json() first)
-  const raw = await req.text();
-  
-  // 3) Parse JSON with try/catch into 'bodyParsed'
-  let bodyParsed: any = null;
-  const contentType = headers.get('content-type') || '';
-  
-  if (contentType.startsWith('application/x-www-form-urlencoded')) {
-    // Decode form data into an object
+  // Non-destructive parse
+  let rawText: string;
+  let rawJson: any = null;
+
+  if (contentType?.includes('json')) {
     try {
-      const params = new URLSearchParams(raw);
-      bodyParsed = Object.fromEntries(params.entries());
+      rawJson = await req.json();
+      rawText = JSON.stringify(rawJson);
     } catch {
-      bodyParsed = null;
+      rawText = await req.text();
     }
   } else {
-    // Parse JSON
+    rawText = await req.text();
     try {
-      bodyParsed = raw ? JSON.parse(raw) : null;
+      rawJson = JSON.parse(rawText);
     } catch {
-      bodyParsed = null;
+      // Keep rawJson as null if parsing fails
     }
   }
 
-  // 4) Extract event fields with robust fallbacks
+  // Derive best-effort fields (do not throw if missing; allow nulls)
+  const externalEventId = rawJson?.id ?? rawJson?.event_id ?? null;
+  const eventType = rawJson?.type ?? rawJson?.event_type ?? null;
+  const communityId = rawJson?.data?.community_id ?? rawJson?.company_id ?? rawJson?.business_id ?? rawJson?.data?.company_id ?? null;
+  const username = rawJson?.data?.user?.username ?? rawJson?.user?.username ?? null;
+
+  // Console breadcrumbs
+  console.log("WEBHOOK_RAW", { 
+    ts: Date.now(), 
+    contentType, 
+    eventType, 
+    externalEventId, 
+    communityId, 
+    payloadKeys: rawJson ? Object.keys(rawJson) : null 
+  });
+
+  // Insert one row into webhook_events
+  try {
+    const { error: insertError } = await supabase.from("webhook_events").insert({
+      event_type: eventType,
+      external_event_id: externalEventId,
+      community_id: communityId,
+      raw_payload: rawJson ?? (rawText ? JSON.parse(rawText) : null),
+      raw_headers: headersDump,
+      content_type: contentType,
+      source: 'webhook'
+    });
+
+    if (insertError) {
+      // If unique violation on external_event_id, swallow (idempotent) and continue
+      if (insertError.code === '23505') {
+        console.log("WEBHOOK_DUPLICATE", { externalEventId, eventType, communityId });
+      } else {
+        console.error("WEBHOOK_INSERT_FAIL", insertError);
+        return NextResponse.json(
+          { ok: false, step: "insert", error: insertError.message },
+          { status: 200 }
+        );
+      }
+    }
+
+    console.log("WEBHOOK_ROW", { 
+      ts: Date.now(), 
+      inserted: true, 
+      eventType, 
+      communityId, 
+      externalEventId 
+    });
+  } catch (e: any) {
+    console.error("WEBHOOK_INSERT_EXCEPTION", e);
+    // Continue with DM pipeline even if insert fails
+  }
+
+  // Continue with existing DM pipeline flow
   const qp = new URL(req.url).searchParams;
   const force = qp.get('force') === '1';
-
-  const headerType =
-    headers.get('x-whop-event') ||
-    headers.get('x-whop-event-type') ||
-    headers.get('whop-event') ||
-    undefined;
-
-  const bodyType =
-    bodyParsed?.type ||
-    bodyParsed?.event ||
-    bodyParsed?.data?.type ||
-    undefined;
-
-  const eventType = headerType ?? bodyType ?? 'unknown';
-
-  const headerCompany =
-    headers.get('x-whop-company-id') ||
-    headers.get('x-whop-community-id') ||
-    undefined;
-
-  const bodyCompany =
-    bodyParsed?.data?.community_id ??
-    bodyParsed?.data?.company_id ??
-    bodyParsed?.community_id ??
-    bodyParsed?.company_id ??
-    undefined;
-
-  const communityId = headerCompany ?? bodyCompany ?? null;
-
-  const username =
-    bodyParsed?.data?.user?.username ??
-    bodyParsed?.user?.username ??
-    bodyParsed?.data?.username ??
-    bodyParsed?.username ??
-    null;
-
-  const externalEventId =
-    headers.get('x-whop-event-id') ??
-    bodyParsed?.id ??
-    bodyParsed?.event_id ??
-    null;
 
   // For forced tests, require REAL values and reject placeholders
   if (force) {
@@ -193,42 +199,7 @@ export async function POST(req: NextRequest) {
 
   console.log('WEBHOOK_HIT_DIAG', { eventType, communityId, username, externalEventId, force });
 
-  // 5) Prepare headers_dump object with only specified keys if present
-  const headersDump: Record<string, string> = {};
-  const headerKeys = [
-    'content-type', 'x-whop-event', 'x-whop-event-type', 'whop-event',
-    'x-whop-company-id', 'x-whop-community-id', 'user-agent', 'x-forwarded-for'
-  ];
-  
-  for (const key of headerKeys) {
-    const value = headers.get(key);
-    if (value) {
-      headersDump[key] = value;
-    }
-  }
-
-  // 6) Insert into public.webhook_events
-  const insertRes = await supabase.from("webhook_events").insert({
-    event_type: eventType,
-    community_id: communityId,
-    payload: bodyParsed, // jsonb
-    headers_dump: headersDump, // jsonb
-    external_event_id: externalEventId,
-    received_at: new Date().toISOString(),
-  }).select("id").single();
-
-  if (insertRes.error) {
-    console.error("WEBHOOK_INSERT_FAIL", insertRes.error);
-    return NextResponse.json(
-      { ok: false, step: "insert", error: insertRes.error.message },
-      { status: 200 }
-    );
-  }
-
-  const insertId = insertRes.data.id;
-  console.log('WEBHOOK_INSERT_OK', { insertId });
-
-  // 7) Decide to trigger DM
+  // Decide to trigger DM
   const allowed = new Set([
     'membership.went_valid',
     'app_membership.went_valid',
@@ -247,17 +218,16 @@ export async function POST(req: NextRequest) {
       eventType,
       communityId,
       username,
-      externalEventId,
-      insertId
+      externalEventId
     });
   }
 
-  // 8) If shouldTrigger, call sendWelcomeDM
+  // If shouldTrigger, call sendWelcomeDM
   try {
     const dmResult = await sendWelcomeDM({
       communityId: communityId!,
       username: username,
-      eventId: externalEventId ?? insertId ?? 'evt_local',
+      eventId: externalEventId ?? 'evt_local',
       source: 'webhook',
     });
 
@@ -273,7 +243,6 @@ export async function POST(req: NextRequest) {
       communityId,
       username,
       externalEventId,
-      insertId,
       dm: {
         status: dmResult?.status || 'unknown',
         error: dmResult?.error || null,
@@ -293,7 +262,6 @@ export async function POST(req: NextRequest) {
       communityId,
       username,
       externalEventId,
-      insertId,
       dm: {
         status: 'failed',
         error: e?.message || String(e),
