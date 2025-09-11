@@ -84,9 +84,7 @@ export async function sendAndLogDM(opts: SendOpts): Promise<{ ok: boolean; statu
         status,
         error,
         message_preview: preview,
-        template_id: templateId ?? null,
-        source,
-        created_at: new Date().toISOString()
+        source
       });
 
     if (insertError) {

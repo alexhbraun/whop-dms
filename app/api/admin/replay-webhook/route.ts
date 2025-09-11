@@ -1,11 +1,10 @@
 // app/api/admin/replay-webhook/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { getServiceClient } from '@/lib/supabase/service'; // use existing service client
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { getTemplateForCommunity } from '@/lib/db/templates'; // template selection
-import { getWhopClient } from '@/lib/whopClient'; // direct Whop client
 import { renderTemplate } from '@/lib/dm'; // template rendering
 import { getBaseUrl } from '@/lib/urls'; // base URL helper
-import { coerceEventId } from '@/lib/db'; // event ID utility
+import { sendDM } from '@/lib/sendDM'; // DM sender
 
 type ReplayBody = {
   externalEventId?: string;
@@ -21,8 +20,8 @@ function previewOf(text: string, n = 140) {
   return (text || '').slice(0, n);
 }
 
-export async function POST(req: NextRequest) {
-  const secretQ = req.nextUrl.searchParams.get('secret') || '';
+export async function POST(req: Request) {
+  const secretQ = new URL(req.url).searchParams.get('secret') || '';
   const adminSecret = process.env.ADMIN_DASH_SECRET || '';
   if (!adminSecret || secretQ !== adminSecret) {
     return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
@@ -40,7 +39,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'missing-externalEventId' }, { status: 400 });
   }
 
-  const supabase = getServiceClient();
+  // Get environment variables
+  const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) {
+    return NextResponse.json({ ok: false, error: 'missing-supabase-config' }, { status: 500 });
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, {
+    auth: { persistSession: false },
+  });
 
   console.log('WEBHOOK_REPLAY_BEGIN', { externalEventId, dryRun, verbose });
 
@@ -93,13 +102,17 @@ export async function POST(req: NextRequest) {
   const onboarding_link = `${getBaseUrl()}/onboarding/${communityId}`;
   const ctx = { member_name, community_name, onboarding_link };
 
-  const messageText = tmpl?.content ? renderTemplate(tmpl.content, ctx) : `Hi ${toUser}, welcome to ${community_name}! Tap here to get started: ${onboarding_link}`;
-  const messagePreview = previewOf(messageText, 140);
+  const renderedMessage = tmpl?.content ? renderTemplate(tmpl.content, ctx) : `Hi ${toUser}, welcome to ${community_name}! Tap here to get started: ${onboarding_link}`;
+  const messagePreview = previewOf(renderedMessage, 200);
 
   console.log('REPLAY_RESOLVED', { eventType: w.event_type, communityId, toUser, hasTemplate: !!tmpl });
 
-  // 6) If dryRun: return preview without sending or logging
+  // --- send the DM (unless dryRun) ---
+  let dmStatus: "sent" | "failed" = "failed";
+  let dmError: string | null = null;
+
   if (dryRun) {
+    // no send, just preview
     return NextResponse.json({
       ok: true,
       mode: "dryRun",
@@ -108,77 +121,54 @@ export async function POST(req: NextRequest) {
         eventType: w.event_type,
         to: toUser,
         templateId: tmpl?.id || null,
-        messagePreview
-      }
+        messagePreview: renderedMessage, // keep it short upstream if needed
+      },
     });
   }
 
-  // 7) Real send: call DM send function
-  let dmStatus: "sent" | "failed" = "failed";
-  let errorTextOrNull: string | null = null;
-
-  try {
-    const whopClient = getWhopClient();
-    await whopClient.messages.sendDirectMessageToUser({
-      toUserIdOrUsername: toUser,
-      message: messageText
-    });
+  // real send
+  const dmResult = await sendDM({
+    toUser,                 // e.g., "alexhbraun"
+    message: renderedMessage,
+    communityId,            // used only for template selection / context; NOT written as column name
+  });
+  if (dmResult?.ok) {
     dmStatus = "sent";
-    console.log('REPLAY_SEND_SUCCESS', { toUser, communityId, externalEventId });
-  } catch (e: any) {
-    errorTextOrNull = e?.message || String(e);
-    console.error("DM_SEND_FAIL", { toUser, communityId, externalEventId, error: errorTextOrNull });
+  } else {
+    dmStatus = "failed";
+    dmError = dmResult?.error || "unknown";
   }
 
-  // 8) Insert into Supabase public.dm_send_log using ONLY existing columns
-  const externalEventIdOrUuid = coerceEventId(externalEventId);
-  const row = {
-    event_id: externalEventIdOrUuid,
-    business_id: communityId,        // map community → business_id
+  // --- log to Supabase using ONLY the allowed columns ---
+  const insertRow = {
+    event_id: externalEventId,           // text
+    business_id: communityId,            // <-- IMPORTANT: business_id, not community_id
     to_user: toUser,
-    status: dmStatus,                // 'sent' or 'failed'
-    error: errorTextOrNull,
-    source: 'replay',
-    message_preview: messagePreview
+    status: dmStatus,                    // 'sent' | 'failed'
+    error: dmError,
+    source: "admin",                     // replay/admin source
+    message_preview: renderedMessage?.slice(0, 200) || null,
   };
 
-  let dmLogInsertError = null;
-  try {
-    const { error: insertError } = await supabase
-      .from('dm_send_log')
-      .insert(row)
-      .select()
-      .single();
-    
-    if (insertError) {
-      dmLogInsertError = insertError.message;
-      console.error('DM_LOG_INSERT_FAIL', { error: insertError, insertRow: row });
-    }
-  } catch (e: any) {
-    dmLogInsertError = e?.message || String(e);
-    console.error('DM_LOG_INSERT_FAIL', { error: e, insertRow: row });
+  // do not include any extra keys; this must match the table shape exactly
+  const { error: logErr } = await supabase
+    .from("dm_send_log")
+    .insert(insertRow);
+
+  if (logErr) {
+    console.error("DM_LOG_INSERT_FAIL", { logErr, insertRow });
   }
 
-  // 9) Always log compact result
-  console.log('REPLAY_SEND_RESULT', { 
-    ok: dmStatus === 'sent', 
-    sent: dmStatus === 'sent', 
-    templateId: tmpl?.id || null, 
-    toUser, 
-    communityId, 
-    externalEventId 
-  });
-
-  // 10) Respond (always 200, include dmLogInsertError if present)
+  // final response
   return NextResponse.json({
-    ok: dmStatus === 'sent',
-    sent: dmStatus === 'sent',
+    ok: dmStatus === "sent",
+    sent: dmStatus === "sent",
     result: dmStatus,
     toUser,
     communityId,
     templateId: tmpl?.id || null,
-    preview: messagePreview,
-    dmLogInsertError
+    preview: renderedMessage,
+    dmLogInsertError: logErr?.message || null,
   });
 }
 
